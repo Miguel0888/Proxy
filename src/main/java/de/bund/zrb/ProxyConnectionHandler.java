@@ -9,6 +9,16 @@ public class ProxyConnectionHandler {
     private static final int CONNECT_TIMEOUT_MILLIS = 15000;
     private static final int READ_TIMEOUT_MILLIS = 60000;
 
+    private final MitmHandler mitmHandler;
+
+    public ProxyConnectionHandler() {
+        this(null);
+    }
+
+    public ProxyConnectionHandler(MitmHandler mitmHandler) {
+        this.mitmHandler = mitmHandler;
+    }
+
     public void handle(Socket clientSocket) throws IOException {
         try {
             clientSocket.setSoTimeout(READ_TIMEOUT_MILLIS);
@@ -43,8 +53,21 @@ public class ProxyConnectionHandler {
             String httpVersion = parts[2];
 
             if ("CONNECT".equalsIgnoreCase(method)) {
-                System.out.println("[Proxy] CONNECT to " + target);
-                handleConnect(target, clientSocket);
+                String[] hostPort = target.split(":");
+                if (hostPort.length == 2) {
+                    String host = hostPort[0];
+                    int port = parsePort(hostPort[1], 443);
+
+                    if (mitmHandler != null && mitmHandler.supports(host, port)) {
+                        System.out.println("[Proxy] MITM handler for " + host + ":" + port);
+                        mitmHandler.handleConnect(host, port, clientSocket);
+                        return;
+                    }
+                }
+
+                // Fallback: normal CONNECT wie bisher
+                handleConnect(target, clientIn, clientOut);
+                return;
             } else {
                 System.out.println("[Proxy] HTTP " + method + " " + target);
                 handleHttpRequest(method, target, httpVersion, rawHeaders.toString(), clientSocket);

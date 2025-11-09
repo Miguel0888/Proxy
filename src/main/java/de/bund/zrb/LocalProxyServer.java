@@ -11,7 +11,13 @@ public class LocalProxyServer {
 
     public LocalProxyServer(int listenPort) {
         this.listenPort = listenPort;
-        this.connectionHandler = new ProxyConnectionHandler();
+//        this.connectionHandler = new ProxyConnectionHandler(null); // MITM aus
+        MitmHandler mitm = new OpenAiMitmHandler(
+                "api.openai.com",
+                keystorePathFromUi,
+                "changeit" // oder aus Config
+        );
+        ProxyConnectionHandler connectionHandler = new ProxyConnectionHandler(mitm); // MITM an
     }
 
     public void start() throws IOException {
