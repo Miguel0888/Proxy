@@ -16,7 +16,7 @@ public class GenericMitmHandler implements MitmHandler {
 
     private static final int CONNECT_TIMEOUT_MILLIS = 15000;
     private static final int READ_TIMEOUT_MILLIS = 60000;
-    private static final int MAX_CAPTURE_BYTES = 65536;
+    private static final int MAX_CAPTURE_BYTES = 1024 * 1024; // 1 MB, reicht für Copilot-Requests
 
     private final SSLContext serverSslContext;
     private final SSLSocketFactory clientSslFactory;
@@ -121,7 +121,11 @@ public class GenericMitmHandler implements MitmHandler {
             int read;
             while ((read = in.read(buffer)) != -1) {
                 if (capture != null && capture.size() < MAX_CAPTURE_BYTES) {
-                    capture.write(buffer, 0, read);
+                    int remaining = MAX_CAPTURE_BYTES - capture.size();
+                    int toWrite = Math.min(read, remaining);
+                    if (toWrite > 0) {
+                        capture.write(buffer, 0, toWrite);
+                    }
                 }
                 out.write(buffer, 0, read);
                 out.flush();
@@ -131,9 +135,33 @@ public class GenericMitmHandler implements MitmHandler {
         } finally {
             if (capture != null && capture.size() > 0) {
                 try {
-                    String text = new String(capture.toByteArray(), "UTF-8");
-                    boolean isJson = looksLikeJson(text);
-                    logTraffic(direction, text, isJson);
+                    String raw = new String(capture.toByteArray(), "UTF-8");
+
+                    if ("client->server".equals(direction) || "server->client".equals(direction)) {
+                        // Split HTTP headers and body
+                        int idx = raw.indexOf("\r\n\r\n");
+                        if (idx >= 0 && idx + 4 <= raw.length()) {
+                            String headers = raw.substring(0, idx);
+                            String body = raw.substring(idx + 4);
+
+                            String headerDirection = direction + " headers";
+                            String bodyDirection = direction + " body";
+
+                            // Always log headers as plain text
+                            logTraffic(headerDirection, headers, false);
+
+                            // Try to detect JSON only on body
+                            boolean isJson = looksLikeJson(body);
+                            logTraffic(bodyDirection, body, isJson);
+                        } else {
+                            // Fallback: no clear separation, log as one block
+                            boolean isJson = looksLikeJson(raw);
+                            logTraffic(direction, raw, isJson);
+                        }
+                    } else {
+                        boolean isJson = looksLikeJson(raw);
+                        logTraffic(direction, raw, isJson);
+                    }
                 } catch (Exception e) {
                     log("[MITM] Failed to decode captured traffic: " + e.getMessage());
                 }
