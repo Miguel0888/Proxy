@@ -5,14 +5,10 @@ import java.net.Socket;
 
 public interface MitmHandler {
 
-    /**
-     * Decide if this handler should intercept the given host and port.
-     */
+    // Decide if this handler wants to intercept this host:port
     boolean supports(String host, int port);
 
-    /**
-     * Handle CONNECT request with MITM (terminate client TLS, connect to remote, forward).
-     * Implementations must fully process the tunnel and return only when done.
-     */
+    // Perform full MITM handling for this CONNECT target.
+    // Implement method as blocking: return only when tunnel is finished.
     void handleConnect(String host, int port, Socket clientSocket) throws IOException;
 }

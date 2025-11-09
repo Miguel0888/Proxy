@@ -14,13 +14,15 @@ public class OpenAiMitmHandler implements MitmHandler {
     private static final int CONNECT_TIMEOUT_MILLIS = 15000;
     private static final int READ_TIMEOUT_MILLIS = 60000;
 
-    private final String targetHost;
-    private final SSLContext serverSslContext;      // used to talk TLS with client
-    private final SSLSocketFactory clientSslFactory; // used to talk TLS with real OpenAI
+    private final String targetHost;          // e.g. api.openai.com
+    private final SSLContext serverSslContext; // TLS to client (our fake cert)
+    private final SSLSocketFactory clientSslFactory; // TLS to real OpenAI
 
-    public OpenAiMitmHandler(String targetHost,
-                             String keyStorePath,
-                             String keyStorePassword) {
+    public OpenAiMitmHandler(String keyStorePath, String keyStorePassword) {
+        this("api.openai.com", keyStorePath, keyStorePassword);
+    }
+
+    public OpenAiMitmHandler(String targetHost, String keyStorePath, String keyStorePassword) {
         try {
             this.targetHost = targetHost.toLowerCase();
             this.serverSslContext = createServerSslContext(keyStorePath, keyStorePassword);
@@ -48,12 +50,12 @@ public class OpenAiMitmHandler implements MitmHandler {
         remote.startHandshake();
         System.out.println("[MITM] Connected TLS to " + host + ":" + port);
 
-        // Acknowledge CONNECT to client (plain)
+        // Acknowledge CONNECT to client (still plain)
         OutputStream clientOutPlain = clientSocket.getOutputStream();
         clientOutPlain.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes("ISO-8859-1"));
         clientOutPlain.flush();
 
-        // Upgrade client side to TLS using our certificate from keystore
+        // Upgrade client side to TLS with our fake api.openai.com cert (from keystore)
         SSLSocket clientTls = (SSLSocket) serverSslContext
                 .getSocketFactory()
                 .createSocket(clientSocket, 0, 0, true);
@@ -66,7 +68,7 @@ public class OpenAiMitmHandler implements MitmHandler {
         // Optional: log first HTTP request line
         logFirstHttpRequestLine(clientTls);
 
-        // Start bidirectional piping
+        // Use existing tunnel logic style: pipe both directions
         Thread t1 = new Thread(new TunnelPipeTask(clientTls, remote));
         Thread t2 = new Thread(new TunnelPipeTask(remote, clientTls));
         t1.setDaemon(true);
@@ -88,14 +90,14 @@ public class OpenAiMitmHandler implements MitmHandler {
     private void logFirstHttpRequestLine(SSLSocket clientTls) {
         try {
             clientTls.setSoTimeout(READ_TIMEOUT_MILLIS);
-            InputStream in = clientTls.getInputStream();
-            in.mark(8192);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(in, "UTF-8"));
+            clientTls.getInputStream().mark(8192);
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(clientTls.getInputStream(), "UTF-8"));
             String line = reader.readLine();
             if (line != null) {
                 System.out.println("[MITM] OpenAI HTTP: " + line);
             }
-            // For real use: implement buffered pump to not drop bytes.
+            // For production: implement buffered forwarding to not lose bytes.
         } catch (IOException e) {
             System.out.println("[MITM] Could not read first HTTP line: " + e.getMessage());
         }

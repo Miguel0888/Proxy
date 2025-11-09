@@ -65,8 +65,8 @@ public class ProxyConnectionHandler {
                     }
                 }
 
-                // Fallback: normal CONNECT wie bisher
-                handleConnect(target, clientIn, clientOut);
+                // Fallback: normal CONNECT (tunnel)
+                handleConnect(target, clientSocket);
                 return;
             } else {
                 System.out.println("[Proxy] HTTP " + method + " " + target);
@@ -160,7 +160,6 @@ public class ProxyConnectionHandler {
             remoteOut.write("\r\n".getBytes("ISO-8859-1"));
             remoteOut.flush();
 
-            // Note: no request body handling (fine für Login-Flow meistens nicht, für Vollsupport erweitern)
             pipe(remoteIn, clientOut);
 
             System.out.println("[Proxy] Completed " + method + " " + host + ":" + port + path);
