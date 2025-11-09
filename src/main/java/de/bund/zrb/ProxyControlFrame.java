@@ -1,5 +1,8 @@
 package de.bund.zrb;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -23,8 +26,10 @@ public class ProxyControlFrame extends JFrame {
     private JLabel urlLabel;
     private JButton startStopButton;
     private JButton applyButton;
+    private JTextPane trafficPane;
 
     private LocalProxyServer server;
+    private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     public ProxyControlFrame() {
         super("Local Proxy Control");
@@ -33,7 +38,7 @@ public class ProxyControlFrame extends JFrame {
         layoutComponents();
         initActions();
         loadConfig();
-        updateStatus(); // proxy bleibt beim Start aus
+        updateStatus();
     }
 
     private void initComponents() {
@@ -48,6 +53,11 @@ public class ProxyControlFrame extends JFrame {
 
         startStopButton = new JButton("Start proxy");
         applyButton = new JButton("Apply settings");
+
+        trafficPane = new JTextPane();
+        trafficPane.setContentType("text/html");
+        trafficPane.setEditable(false);
+        trafficPane.setText("<html><body style='font-family:monospace;font-size:11px;'></body></html>");
     }
 
     private void layoutComponents() {
@@ -55,7 +65,7 @@ public class ProxyControlFrame extends JFrame {
         content.setBorder(new EmptyBorder(10, 10, 10, 10));
         setContentPane(content);
 
-        JPanel form = new JPanel(new GridBagLayout());
+        JPanel top = new JPanel(new GridBagLayout());
         GridBagConstraints gc = new GridBagConstraints();
         gc.insets = new Insets(4, 4, 4, 4);
         gc.anchor = GridBagConstraints.WEST;
@@ -66,59 +76,62 @@ public class ProxyControlFrame extends JFrame {
         // Port
         gc.gridx = 0;
         gc.gridy = row;
-        form.add(new JLabel("Port:"), gc);
+        top.add(new JLabel("Port:"), gc);
 
         gc.gridx = 1;
-        form.add(portField, gc);
+        top.add(portField, gc);
 
         // Keystore
         row++;
         gc.gridx = 0;
         gc.gridy = row;
-        form.add(new JLabel("Keystore (.jks):"), gc);
+        top.add(new JLabel("Keystore (.jks):"), gc);
 
         gc.gridx = 1;
-        form.add(keystoreField, gc);
+        top.add(keystoreField, gc);
 
         JButton browseButton = new JButton("Browse...");
         gc.gridx = 2;
-        form.add(browseButton, gc);
+        top.add(browseButton, gc);
 
         // MITM checkbox
         row++;
         gc.gridx = 0;
         gc.gridy = row;
         gc.gridwidth = 3;
-        form.add(mitmCheckBox, gc);
+        top.add(mitmCheckBox, gc);
 
         // Status
         row++;
         gc.gridx = 0;
         gc.gridy = row;
         gc.gridwidth = 3;
-        form.add(statusLabel, gc);
+        top.add(statusLabel, gc);
 
         // URL
         row++;
         gc.gridx = 0;
         gc.gridy = row;
         gc.gridwidth = 3;
-        form.add(urlLabel, gc);
+        top.add(urlLabel, gc);
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.add(applyButton);
         buttons.add(startStopButton);
 
-        content.add(form, BorderLayout.CENTER);
-        content.add(buttons, BorderLayout.SOUTH);
+        JPanel north = new JPanel(new BorderLayout());
+        north.add(top, BorderLayout.CENTER);
+        north.add(buttons, BorderLayout.SOUTH);
 
-        // Browse action
+        content.add(north, BorderLayout.NORTH);
+        content.add(new JScrollPane(trafficPane), BorderLayout.CENTER);
+
         browseButton.addActionListener(e -> chooseKeystore());
     }
 
     private void initActions() {
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        setSize(650, 260);
+        setSize(900, 600);
         setLocationRelativeTo(null);
 
         startStopButton.addActionListener(e -> toggleProxy());
@@ -160,19 +173,27 @@ public class ProxyControlFrame extends JFrame {
                 return;
             }
 
+            MitmTrafficListener listener = new MitmTrafficListener() {
+                @Override
+                public void onTraffic(String direction, String text, boolean isJson) {
+                    appendTraffic(direction, text, isJson);
+                }
+            };
+
             try {
                 mitmHandler = new GenericMitmHandler(
                         ksFile.getAbsolutePath(),
-                        "changeit", // keep in sync with your PS scripts
-                        Collections.singleton("api.openai.com")
+                        "changeit", // keep consistent with your PS scripts
+                        Collections.singleton("api.openai.com"),
+                        listener
                 );
-                System.out.println("[UI] Starting proxy with MITM for api.openai.com");
+                appendTraffic("info", "MITM enabled for api.openai.com", false);
             } catch (IllegalStateException e) {
                 showError("Failed to initialize MITM: " + e.getMessage());
                 return;
             }
         } else {
-            System.out.println("[UI] Starting proxy without MITM");
+            appendTraffic("info", "Starting proxy without MITM", false);
         }
 
         server = new LocalProxyServer(port, mitmHandler);
@@ -192,6 +213,7 @@ public class ProxyControlFrame extends JFrame {
             server.stop();
             server = null;
         }
+        appendTraffic("info", "Proxy stopped", false);
         updateStatus();
     }
 
@@ -203,8 +225,6 @@ public class ProxyControlFrame extends JFrame {
         if (!saveConfig()) {
             return;
         }
-
-        // Wenn läuft: mit neuen Settings neu starten
         if (isProxyRunning()) {
             stopProxy();
             startProxy();
@@ -235,6 +255,69 @@ public class ProxyControlFrame extends JFrame {
                 }
             }
         });
+    }
+
+    private void appendTraffic(String direction, String text, boolean isJson) {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                StringBuilder html = new StringBuilder();
+                String current = trafficPane.getText();
+                int bodyIndex = current.indexOf("<body");
+                if (bodyIndex >= 0) {
+                    int start = current.indexOf(">", bodyIndex);
+                    int end = current.lastIndexOf("</body>");
+                    if (start >= 0 && end > start) {
+                        html.append(current, 0, start + 1);
+                        html.append(current, start + 1, end);
+                    } else {
+                        html.append("<html><body style='font-family:monospace;font-size:11px;'>");
+                    }
+                } else {
+                    html.append("<html><body style='font-family:monospace;font-size:11px;'>");
+                }
+
+                html.append("<div style='margin-bottom:4px;'>");
+                html.append("<span style='color:#888;'>[")
+                        .append(escapeHtml(direction))
+                        .append("]</span> ");
+
+                String content = text;
+                if (isJson) {
+                    try {
+                        content = gson.toJson(gson.fromJson(text, Object.class));
+                    } catch (Exception ignored) {
+                        // Keep original text if parsing fails
+                    }
+                }
+                html.append("<pre style='display:inline;'>")
+                        .append(escapeHtml(content))
+                        .append("</pre>");
+                html.append("</div>");
+
+                html.append("</body></html>");
+
+                trafficPane.setText(html.toString());
+                trafficPane.setCaretPosition(trafficPane.getDocument().getLength());
+            }
+        });
+    }
+
+    private String escapeHtml(String s) {
+        if (s == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '<': sb.append("&lt;"); break;
+                case '>': sb.append("&gt;"); break;
+                case '&': sb.append("&amp;"); break;
+                default: sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     private void chooseKeystore() {
@@ -303,7 +386,7 @@ public class ProxyControlFrame extends JFrame {
     private boolean saveConfig() {
         int port = readPortFromField();
         if (port <= 0) {
-            showError("Port must be a number between 1 and 65535.");
+            showError("Port must be a number between 1 und 65535.");
             return false;
         }
 
@@ -332,7 +415,6 @@ public class ProxyControlFrame extends JFrame {
         } finally {
             closeQuietly(out);
         }
-
         return true;
     }
 
