@@ -103,7 +103,16 @@ public class GenericMitmHandler implements MitmHandler {
                 log("[MITM] Failed to read request headers");
                 return false;
             }
-            String headers = headerBuffer.toString("UTF-8");
+            byte[] headerBytes = headerBuffer.toByteArray();
+            if (headerBytes.length < 4) {
+                log("[MITM] Header too short");
+                return false;
+            }
+
+            // Strip the final \r\n\r\n from the header string
+            int headerLen = headerBytes.length - 4;
+            String headers = new String(headerBytes, 0, headerLen, "UTF-8");
+
 
             // 2) Content-Length ermitteln (nur dann können wir sicher Body lesen)
             int contentLength = parseContentLength(headers);
@@ -293,10 +302,15 @@ public class GenericMitmHandler implements MitmHandler {
 
     private String replaceContentLength(String headers, int newLength) {
         String[] lines = headers.split("\r\n");
-        boolean replaced = false;
         StringBuilder sb = new StringBuilder();
+        boolean replaced = false;
+
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
+            if (line.length() == 0) {
+                // Keine zusätzlichen leeren Headerzeilen produzieren
+                continue;
+            }
             int colon = line.indexOf(':');
             if (colon > 0) {
                 String name = line.substring(0, colon).trim();
@@ -308,9 +322,11 @@ public class GenericMitmHandler implements MitmHandler {
             }
             sb.append(line).append("\r\n");
         }
+
         if (!replaced) {
             sb.append("Content-Length: ").append(newLength).append("\r\n");
         }
+
         return sb.toString();
     }
 
