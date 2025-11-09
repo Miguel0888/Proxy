@@ -97,24 +97,23 @@ public class GenericMitmHandler implements MitmHandler {
             InputStream in = clientTls.getInputStream();
             OutputStream out = remote.getOutputStream();
 
-            // 1) Headers lesen
+            // 1) Headers lesen (inkl. Request-Line)
             ByteArrayOutputStream headerBuffer = new ByteArrayOutputStream();
             if (!readUntilDoubleCrlf(in, headerBuffer, MAX_HEADER_BYTES)) {
                 log("[MITM] Failed to read request headers");
                 return false;
             }
+
             byte[] headerBytes = headerBuffer.toByteArray();
             if (headerBytes.length < 4) {
                 log("[MITM] Header too short");
                 return false;
             }
 
-            // Strip the final \r\n\r\n from the header string
+            // Strip trailing \r\n\r\n
             int headerLen = headerBytes.length - 4;
             String headers = new String(headerBytes, 0, headerLen, "UTF-8");
 
-
-            // 2) Content-Length ermitteln (nur dann können wir sicher Body lesen)
             int contentLength = parseContentLength(headers);
             boolean hasBody = contentLength > 0 && contentLength <= MAX_BODY_BYTES;
 
@@ -128,39 +127,36 @@ public class GenericMitmHandler implements MitmHandler {
                 body = new String(bodyBytes, "UTF-8");
             }
 
-            // 3) Logging in UI
+            // Logging original
             logTraffic("client->server headers", headers, false);
             if (hasBody) {
-                boolean isJson = looksLikeJson(body);
-                logTraffic("client->server body", body, isJson);
+                logTraffic("client->server body", body, looksLikeJson(body));
             }
 
-            // 4) Optionaler Rewrite nur für OpenAI chat.completions + gpt-5-mini
-            String newBody = body;
-            String newHeaders = headers;
+            // 2) Nur OpenAI /v1/chat/completions + gpt-5-mini + temperature patchen
+            String bodyToSend = body;
 
-            if (hasBody && isChatCompletionsRequest(headers)) {
-                String rewritten = rewriteOpenAiJsonIfNeeded(body);
-                if (!rewritten.equals(body)) {
-                    newBody = rewritten;
-                    byte[] nb = newBody.getBytes("UTF-8");
-                    newHeaders = replaceContentLength(headers, nb.length);
-                    log("[MITM] Modified OpenAI request body and Content-Length");
-                    // Logging der modifizierten Variante
-                    logTraffic("client->server body (modified)", newBody, looksLikeJson(newBody));
+            if (hasBody && isChatCompletionsRequest(headers)
+                    && bodyContainsModelGpt5Mini(body)) {
+
+                String patched = patchTemperatureInline(body);
+                if (!patched.equals(body)) {
+                    bodyToSend = patched;
+                    log("[MITM] Patched temperature for gpt-5-mini inline");
+                    logTraffic("client->server body (modified)", bodyToSend, looksLikeJson(bodyToSend));
+                    // Content-Length bleibt identisch, da wir nur 0.0 -> 1.0 / 0 -> 1.0 ersetzen
                 }
             }
 
-            // 5) Zusammensetzen und an remote schicken
+            // 3) Unverändert (oder minimal gepatcht) weiterleiten
             ByteArrayOutputStream forward = new ByteArrayOutputStream();
-            forward.write(newHeaders.getBytes("UTF-8"));
+            forward.write(headers.getBytes("UTF-8"));
             forward.write("\r\n\r\n".getBytes("UTF-8"));
             if (hasBody) {
-                forward.write(newBody.getBytes("UTF-8"));
+                forward.write(bodyToSend.getBytes("UTF-8"));
             }
 
-            byte[] outBytes = forward.toByteArray();
-            out.write(outBytes);
+            out.write(forward.toByteArray());
             out.flush();
 
             return true;
@@ -405,4 +401,28 @@ public class GenericMitmHandler implements MitmHandler {
             // Ignore
         }
     }
+
+    private boolean bodyContainsModelGpt5Mini(String body) {
+        if (body == null) {
+            return false;
+        }
+        String lower = body.toLowerCase();
+        return lower.contains("\"model\"") && lower.contains("gpt-5-mini");
+    }
+
+    private String patchTemperatureInline(String body) {
+        if (body == null) {
+            return null;
+        }
+        String patched = body;
+
+        // Replace exact forms, Länge bleibt gleich
+        patched = patched.replace("\"temperature\": 0.0", "\"temperature\": 1.0");
+        patched = patched.replace("\"temperature\":0.0", "\"temperature\":1.0");
+        patched = patched.replace("\"temperature\": 0", "\"temperature\": 1");
+        patched = patched.replace("\"temperature\":0", "\"temperature\":1");
+
+        return patched;
+    }
+
 }
