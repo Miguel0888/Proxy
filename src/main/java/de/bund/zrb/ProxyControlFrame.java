@@ -5,7 +5,12 @@ import com.google.gson.GsonBuilder;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import java.awt.*;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.FlowLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.io.*;
 import java.util.Collections;
 import java.util.Properties;
@@ -19,6 +24,13 @@ public class ProxyControlFrame extends JFrame {
     private static final String KEY_KEYSTORE_PATH = "proxy.keystore.path";
     private static final String KEY_MITM_ENABLED = "proxy.mitm.enabled";
 
+    // Resources inside the JAR (place scripts under src/main/resources/ps)
+    private static final String RESOURCE_CREATE_CA = "/ps/create-ca.ps1";
+    private static final String RESOURCE_OPENAI_CERT = "/ps/create-openai-cert.ps1";
+
+    // Expected CA filename created by your scripts in ~/.proxy
+    private static final String CA_CERT_FILE_NAME = "myproxy-ca.crt";
+
     private JTextField portField;
     private JTextField keystoreField;
     private JCheckBox mitmCheckBox;
@@ -26,6 +38,8 @@ public class ProxyControlFrame extends JFrame {
     private JLabel urlLabel;
     private JButton startStopButton;
     private JButton applyButton;
+    private JButton setupCertButton;
+    private JButton installCaButton;
     private JTextPane trafficPane;
 
     private LocalProxyServer server;
@@ -53,6 +67,8 @@ public class ProxyControlFrame extends JFrame {
 
         startStopButton = new JButton("Start proxy");
         applyButton = new JButton("Apply settings");
+        setupCertButton = new JButton("Generate MITM keystore");
+        installCaButton = new JButton("Install CA into system trust store");
 
         trafficPane = new JTextPane();
         trafficPane.setContentType("text/html");
@@ -76,6 +92,7 @@ public class ProxyControlFrame extends JFrame {
         // Port
         gc.gridx = 0;
         gc.gridy = row;
+        gc.gridwidth = 1;
         top.add(new JLabel("Port:"), gc);
 
         gc.gridx = 1;
@@ -116,6 +133,8 @@ public class ProxyControlFrame extends JFrame {
         top.add(urlLabel, gc);
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttons.add(setupCertButton);
+        buttons.add(installCaButton);
         buttons.add(applyButton);
         buttons.add(startStopButton);
 
@@ -131,11 +150,13 @@ public class ProxyControlFrame extends JFrame {
 
     private void initActions() {
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        setSize(900, 600);
+        setSize(1000, 650);
         setLocationRelativeTo(null);
 
         startStopButton.addActionListener(e -> toggleProxy());
         applyButton.addActionListener(e -> applySettings());
+        setupCertButton.addActionListener(e -> runCertSetup());
+        installCaButton.addActionListener(e -> runInstallCa());
     }
 
     private void toggleProxy() {
@@ -183,7 +204,7 @@ public class ProxyControlFrame extends JFrame {
             try {
                 mitmHandler = new GenericMitmHandler(
                         ksFile.getAbsolutePath(),
-                        "changeit", // keep consistent with your PS scripts
+                        "changeit",
                         Collections.singleton("api.openai.com"),
                         listener
                 );
@@ -311,10 +332,17 @@ public class ProxyControlFrame extends JFrame {
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             switch (c) {
-                case '<': sb.append("&lt;"); break;
-                case '>': sb.append("&gt;"); break;
-                case '&': sb.append("&amp;"); break;
-                default: sb.append(c);
+                case '<':
+                    sb.append("&lt;");
+                    break;
+                case '>':
+                    sb.append("&gt;");
+                    break;
+                case '&':
+                    sb.append("&amp;");
+                    break;
+                default:
+                    sb.append(c);
             }
         }
         return sb.toString();
@@ -449,6 +477,258 @@ public class ProxyControlFrame extends JFrame {
         } catch (IOException ignored) {
             // Ignore
         }
+    }
+
+    // --- MITM keystore generation (PS scripts) ---
+
+    private void runCertSetup() {
+        int choice = JOptionPane.showConfirmDialog(
+                this,
+                "This will generate a local CA certificate and MITM keystore (myproxy.jks)\n" +
+                        "in your user directory under " + CONFIG_DIR + ".\n\n" +
+                        "Use this only for local debugging. The generated CA can be used to\n" +
+                        "intercept HTTPS traffic to api.openai.com via this proxy.",
+                "Generate MITM keystore?",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE
+        );
+
+        if (choice != JOptionPane.OK_OPTION) {
+            appendTraffic("setup", "MITM keystore generation cancelled by user.", false);
+            return;
+        }
+
+        Thread worker = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                appendTraffic("setup", "Start MITM keystore generation ...", false);
+
+                if (!isWindowsOs()) {
+                    showError("PowerShell-based certificate setup is only implemented for Windows.");
+                    appendTraffic("setup", "Abort: non-Windows OS detected.", false);
+                    return;
+                }
+
+                File configDir = getConfigDir();
+                if (!configDir.exists() && !configDir.mkdirs()) {
+                    showError("Could not create config directory: " + configDir.getAbsolutePath());
+                    appendTraffic("setup", "Abort: cannot create config dir.", false);
+                    return;
+                }
+
+                try {
+                    File createCaPs1 = extractResourceIfMissing(
+                            RESOURCE_CREATE_CA,
+                            new File(configDir, "create-ca.ps1")
+                    );
+                    File openAiPs1 = extractResourceIfMissing(
+                            RESOURCE_OPENAI_CERT,
+                            new File(configDir, "create-openai-cert.ps1")
+                    );
+
+                    int r1 = runPowerShellScript(configDir, createCaPs1);
+                    appendTraffic("setup", "create-ca.ps1 finished with exit code " + r1, false);
+                    if (r1 != 0) {
+                        showError("create-ca.ps1 failed. See setup log.");
+                        return;
+                    }
+
+                    int r2 = runPowerShellScript(configDir, openAiPs1);
+                    appendTraffic("setup", "create-openai-cert.ps1 finished with exit code " + r2, false);
+                    if (r2 != 0) {
+                        showError("create-openai-cert.ps1 failed. See setup log.");
+                        return;
+                    }
+
+                    File ks = new File(configDir, "myproxy.jks");
+                    if (ks.exists()) {
+                        keystoreField.setText(ks.getAbsolutePath());
+                        mitmCheckBox.setSelected(true);
+                        saveConfig();
+                        appendTraffic("setup", "myproxy.jks detected and MITM enabled in UI.", false);
+                    } else {
+                        showError("myproxy.jks was not created. Check PowerShell output.");
+                        appendTraffic("setup", "myproxy.jks not found after scripts.", false);
+                    }
+                } catch (IOException e) {
+                    showError("Error during certificate setup: " + e.getMessage());
+                    appendTraffic("setup", "Exception: " + e.getMessage(), false);
+                }
+            }
+        }, "mitm-setup");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    // --- CA install into system trust store (separate, explicit) ---
+
+    private void runInstallCa() {
+        if (!isWindowsOs()) {
+            showError("Automatic CA installation is currently only implemented for Windows.");
+            return;
+        }
+
+        File configDir = getConfigDir();
+        File caFile = new File(configDir, CA_CERT_FILE_NAME);
+        if (!caFile.exists()) {
+            showError("CA certificate not found: " + caFile.getAbsolutePath() +
+                    "\nRun 'Generate MITM keystore' first.");
+            return;
+        }
+
+        int choice = JOptionPane.showConfirmDialog(
+                this,
+                "This will import the local MITM CA certificate into the Windows\n" +
+                        "\"Trusted Root Certification Authorities\" store.\n\n" +
+                        "Effects:\n" +
+                        "- Certificates issued by this CA (e.g. for api.openai.com via this proxy)\n" +
+                        "  will be trusted by your system.\n" +
+                        "- This is powerful and must only be used for local debugging on your machine.\n" +
+                        "- Remove the CA from the trust store if you no longer need it.\n\n" +
+                        "You may need to run this application with administrative privileges.\n\n" +
+                        "Do you understand and want to proceed?",
+                "Install CA into Windows trust store?",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+        );
+
+        if (choice != JOptionPane.YES_OPTION) {
+            appendTraffic("setup", "User declined CA trust-store installation.", false);
+            return;
+        }
+
+        Thread worker = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                appendTraffic("setup", "Start CA installation into Windows Root store ...", false);
+                try {
+                    int exit = runCertUtilAddStore(caFile);
+                    appendTraffic("setup", "certutil exit code: " + exit, false);
+                    if (exit == 0) {
+                        appendTraffic("setup", "CA successfully installed into Windows Root store.", false);
+                        JOptionPane.showMessageDialog(
+                                ProxyControlFrame.this,
+                                "CA successfully installed into Windows Root store.",
+                                "Success",
+                                JOptionPane.INFORMATION_MESSAGE
+                        );
+                    } else {
+                        showError("certutil failed. See setup log. Run as Administrator?");
+                    }
+                } catch (IOException e) {
+                    showError("Failed to run certutil: " + e.getMessage());
+                    appendTraffic("setup", "certutil error: " + e.getMessage(), false);
+                }
+            }
+        }, "ca-install");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private int runCertUtilAddStore(File caFile) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder(
+                "certutil",
+                "-addstore",
+                "-f",
+                "Root",
+                caFile.getAbsolutePath()
+        );
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), "UTF-8")
+        );
+
+        String line;
+        StringBuilder output = new StringBuilder();
+        while ((line = reader.readLine()) != null) {
+            output.append(line).append("\n");
+        }
+
+        int exitCode;
+        try {
+            exitCode = process.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("certutil interrupted", e);
+        }
+
+        appendTraffic("setup", "certutil output:\n" + output.toString(), false);
+        return exitCode;
+    }
+
+    // --- shared helpers for scripts ---
+
+    private File extractResourceIfMissing(String resourcePath, File target) throws IOException {
+        if (target.exists()) {
+            return target;
+        }
+
+        InputStream in = ProxyControlFrame.class.getResourceAsStream(resourcePath);
+        if (in == null) {
+            throw new IOException("Resource not found: " + resourcePath);
+        }
+
+        appendTraffic("setup", "Extract " + resourcePath + " -> " + target.getAbsolutePath(), false);
+
+        FileOutputStream out = null;
+        try {
+            out = new FileOutputStream(target);
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+        } finally {
+            closeQuietly(in);
+            closeQuietly(out);
+        }
+
+        return target;
+    }
+
+    private int runPowerShellScript(File workingDir, File scriptFile) throws IOException {
+        if (!scriptFile.exists()) {
+            throw new IOException("Script not found: " + scriptFile.getAbsolutePath());
+        }
+
+        ProcessBuilder pb = new ProcessBuilder(
+                "powershell.exe",
+                "-ExecutionPolicy", "Bypass",
+                "-File", scriptFile.getAbsolutePath()
+        );
+        pb.directory(workingDir);
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), "UTF-8")
+        );
+
+        String line;
+        StringBuilder output = new StringBuilder();
+        while ((line = reader.readLine()) != null) {
+            output.append(line).append("\n");
+        }
+
+        int exitCode;
+        try {
+            exitCode = process.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Script execution interrupted: " + scriptFile.getName(), e);
+        }
+
+        appendTraffic("setup", "Output from " + scriptFile.getName() + ":\n" + output.toString(), false);
+        return exitCode;
+    }
+
+    private boolean isWindowsOs() {
+        String os = System.getProperty("os.name");
+        return os != null && os.toLowerCase().contains("win");
     }
 
     public static void main(String[] args) {
