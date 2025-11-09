@@ -10,51 +10,55 @@ public class ProxyConnectionHandler {
     private static final int READ_TIMEOUT_MILLIS = 60000;
 
     public void handle(Socket clientSocket) throws IOException {
-        clientSocket.setSoTimeout(READ_TIMEOUT_MILLIS);
+        try {
+            clientSocket.setSoTimeout(READ_TIMEOUT_MILLIS);
 
-        InputStream clientIn = clientSocket.getInputStream();
-        OutputStream clientOut = clientSocket.getOutputStream();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(clientIn, "ISO-8859-1"));
+            InputStream clientIn = clientSocket.getInputStream();
+            OutputStream clientOut = clientSocket.getOutputStream();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(clientIn, "ISO-8859-1"));
 
-        String requestLine = reader.readLine();
-        if (requestLine == null || requestLine.isEmpty()) {
-            System.out.println("[Proxy] Empty request line, close connection");
-            return;
-        }
+            String requestLine = reader.readLine();
+            if (requestLine == null || requestLine.isEmpty()) {
+                System.out.println("[Proxy] Empty request line, close connection");
+                return;
+            }
 
-        String headerLine;
-        StringBuilder rawHeaders = new StringBuilder();
-        while ((headerLine = reader.readLine()) != null && headerLine.length() > 0) {
-            rawHeaders.append(headerLine).append("\r\n");
-        }
+            String headerLine;
+            StringBuilder rawHeaders = new StringBuilder();
+            while ((headerLine = reader.readLine()) != null && headerLine.length() > 0) {
+                rawHeaders.append(headerLine).append("\r\n");
+            }
 
-        System.out.println("[Proxy] Request line: " + requestLine);
+            System.out.println("[Proxy] Request line: " + requestLine);
 
-        String[] parts = requestLine.split(" ");
-        if (parts.length < 3) {
-            writeBadRequest(clientOut);
-            System.out.println("[Proxy] Invalid request line");
-            return;
-        }
+            String[] parts = requestLine.split(" ");
+            if (parts.length < 3) {
+                System.out.println("[Proxy] Invalid request line");
+                writeBadRequest(clientOut);
+                return;
+            }
 
-        String method = parts[0];
-        String target = parts[1];
-        String httpVersion = parts[2];
+            String method = parts[0];
+            String target = parts[1];
+            String httpVersion = parts[2];
 
-        if ("CONNECT".equalsIgnoreCase(method)) {
-            System.out.println("[Proxy] CONNECT to " + target);
-            handleConnect(target, clientIn, clientOut);
-        } else {
-            System.out.println("[Proxy] HTTP " + method + " " + target);
-            handleHttpRequest(method, target, httpVersion, rawHeaders.toString(), reader, clientOut);
+            if ("CONNECT".equalsIgnoreCase(method)) {
+                System.out.println("[Proxy] CONNECT to " + target);
+                handleConnect(target, clientSocket);
+            } else {
+                System.out.println("[Proxy] HTTP " + method + " " + target);
+                handleHttpRequest(method, target, httpVersion, rawHeaders.toString(), clientSocket);
+            }
+        } finally {
+            closeQuietly(clientSocket);
         }
     }
 
-    private void handleConnect(String target, InputStream clientIn, OutputStream clientOut) throws IOException {
+    private void handleConnect(String target, Socket clientSocket) throws IOException {
         String[] hostPort = target.split(":");
         if (hostPort.length != 2) {
-            writeBadRequest(clientOut);
             System.out.println("[Proxy] Invalid CONNECT target: " + target);
+            writeBadRequest(clientSocket.getOutputStream());
             return;
         }
 
@@ -62,27 +66,29 @@ public class ProxyConnectionHandler {
         int port = parsePort(hostPort[1], 443);
 
         Socket remoteSocket = new Socket();
-        System.out.println("[Proxy] Opening tunnel to " + host + ":" + port);
-        remoteSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
-        remoteSocket.setSoTimeout(READ_TIMEOUT_MILLIS);
+        try {
+            System.out.println("[Proxy] Opening tunnel to " + host + ":" + port);
+            remoteSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
+            remoteSocket.setSoTimeout(READ_TIMEOUT_MILLIS);
 
-        OutputStream remoteOut = remoteSocket.getOutputStream();
-        InputStream remoteIn = remoteSocket.getInputStream();
+            OutputStream clientOut = clientSocket.getOutputStream();
+            clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes("ISO-8859-1"));
+            clientOut.flush();
+            System.out.println("[Proxy] Tunnel established " + host + ":" + port);
 
-        // Signal successful tunnel
-        clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes("ISO-8859-1"));
-        clientOut.flush();
-        System.out.println("[Proxy] Tunnel established " + host + ":" + port);
-
-        startTunnel(clientIn, clientOut, remoteIn, remoteOut);
+            startTunnelBlocking(clientSocket, remoteSocket);
+            System.out.println("[Proxy] Tunnel closed " + host + ":" + port);
+        } finally {
+            closeQuietly(remoteSocket);
+        }
     }
 
     private void handleHttpRequest(String method,
                                    String target,
                                    String httpVersion,
                                    String rawHeaders,
-                                   BufferedReader clientReader,
-                                   OutputStream clientOut) throws IOException {
+                                   Socket clientSocket) throws IOException {
+
         String host;
         int port;
         String path = target;
@@ -109,45 +115,56 @@ public class ProxyConnectionHandler {
         }
 
         if (host == null) {
-            writeBadRequest(clientOut);
             System.out.println("[Proxy] Missing Host header for: " + target);
+            writeBadRequest(clientSocket.getOutputStream());
             return;
         }
 
         System.out.println("[Proxy] Forward " + method + " " + host + ":" + port + path);
 
         Socket remoteSocket = new Socket();
-        remoteSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
-        remoteSocket.setSoTimeout(READ_TIMEOUT_MILLIS);
+        try {
+            remoteSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
+            remoteSocket.setSoTimeout(READ_TIMEOUT_MILLIS);
 
-        OutputStream remoteOut = remoteSocket.getOutputStream();
-        InputStream remoteIn = remoteSocket.getInputStream();
+            OutputStream remoteOut = remoteSocket.getOutputStream();
+            InputStream remoteIn = remoteSocket.getInputStream();
+            OutputStream clientOut = clientSocket.getOutputStream();
 
-        String requestLine = method + " " + path + " " + httpVersion + "\r\n";
-        remoteOut.write(requestLine.getBytes("ISO-8859-1"));
-        remoteOut.write(rawHeaders.getBytes("ISO-8859-1"));
-        remoteOut.write("\r\n".getBytes("ISO-8859-1"));
-        remoteOut.flush();
+            String requestLine = method + " " + path + " " + httpVersion + "\r\n";
+            remoteOut.write(requestLine.getBytes("ISO-8859-1"));
+            remoteOut.write(rawHeaders.getBytes("ISO-8859-1"));
+            remoteOut.write("\r\n".getBytes("ISO-8859-1"));
+            remoteOut.flush();
 
-        pipe(remoteIn, clientOut);
+            // Note: no request body handling (fine für Login-Flow meistens nicht, für Vollsupport erweitern)
+            pipe(remoteIn, clientOut);
 
-        closeQuietly(remoteSocket);
-        System.out.println("[Proxy] Completed " + method + " " + host + ":" + port + path);
+            System.out.println("[Proxy] Completed " + method + " " + host + ":" + port + path);
+        } finally {
+            closeQuietly(remoteSocket);
+        }
     }
 
-    private void startTunnel(final InputStream clientIn,
-                             final OutputStream clientOut,
-                             final InputStream remoteIn,
-                             final OutputStream remoteOut) {
+    private void startTunnelBlocking(Socket clientSocket, Socket remoteSocket) {
+        TunnelPipeTask clientToRemote = new TunnelPipeTask(clientSocket, remoteSocket);
+        TunnelPipeTask remoteToClient = new TunnelPipeTask(remoteSocket, clientSocket);
 
-        Thread clientToRemote = new Thread(new TunnelPipeTask(clientIn, remoteOut));
-        Thread remoteToClient = new Thread(new TunnelPipeTask(remoteIn, clientOut));
+        Thread t1 = new Thread(clientToRemote);
+        Thread t2 = new Thread(remoteToClient);
 
-        clientToRemote.setDaemon(true);
-        remoteToClient.setDaemon(true);
+        t1.setDaemon(true);
+        t2.setDaemon(true);
 
-        clientToRemote.start();
-        remoteToClient.start();
+        t1.start();
+        t2.start();
+
+        try {
+            t1.join();
+            t2.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void pipe(InputStream in, OutputStream out) throws IOException {

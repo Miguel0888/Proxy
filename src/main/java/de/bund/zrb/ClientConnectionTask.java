@@ -19,19 +19,6 @@ public class ClientConnectionTask implements Runnable {
             connectionHandler.handle(clientSocket);
         } catch (IOException e) {
             System.err.println("[Proxy] Connection error: " + e.getMessage());
-        } finally {
-            closeQuietly(clientSocket);
-        }
-    }
-
-    private void closeQuietly(Socket socket) {
-        if (socket == null) {
-            return;
-        }
-        try {
-            socket.close();
-        } catch (IOException ignored) {
-            // Ignore
         }
     }
 }

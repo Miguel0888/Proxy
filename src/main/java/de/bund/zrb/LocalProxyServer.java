@@ -32,7 +32,7 @@ public class LocalProxyServer {
     }
 
     public static void main(String[] args) throws IOException {
-        int port = 8888; // must match IntelliJ Copilot config
+        int port = 8888; // keep in sync with IntelliJ/GitHub Copilot settings
         new LocalProxyServer(port).start();
     }
 }
