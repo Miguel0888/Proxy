@@ -3,8 +3,17 @@ plugins {
     id 'com.github.johnrengelman.shadow' version '8.1.1' //um Fat-Jar mit allen Dependendies zu erzeugen
 }
 
-group = 'org.example'
-version = '1.0-SNAPSHOT'
+group = 'de.bund.zrb.proxy'
+
+// Version kommt idealerweise aus gradle.properties (siehe unten)
+if (!project.hasProperty('version')) {
+    version = '0.0.1-SNAPSHOT'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
 
 repositories {
     mavenCentral()
@@ -15,10 +24,20 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    // JSON
     implementation 'com.google.code.gson:gson:2.10.1'
+
+    // füge hier alle anderen Dependencies aus deinem eigentlichen Projekt wieder ein
+    // (Swing ist im JDK, PS-Skripte liegen als Ressourcen)
 }
 
 test {
     useJUnitPlatform()
+}
+
+jar {
+    manifest {
+        attributes(
+                'Main-Class': 'de.bund.zrb.ProxyControlFrame' // Die Main-Klasse, die gestartet werden soll
+        )
+    }
 }

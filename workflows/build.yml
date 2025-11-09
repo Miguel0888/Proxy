@@ -1,0 +1,87 @@
+name: Release Workflow
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Print project structure
+        run: ./gradlew projects
+
+      - name: Build shadow jar
+        run: |
+          ./gradlew clean shadowJar
+
+      - name: Determine and bump version
+        id: version
+        run: |
+          current_version=$(grep '^version=' gradle.properties | cut -d'=' -f2)
+          echo "current_version=$current_version" >> $GITHUB_ENV
+
+          new_version=$(echo "$current_version" | awk -F. '{
+            $NF += 1
+            for (i = 1; i <= NF; i++) {
+              printf "%s%s", $i, (i == NF ? "" : ".")
+            }
+          }')
+
+          echo "new_version=$new_version" >> $GITHUB_ENV
+
+      - name: Update version in gradle.properties
+        run: |
+          sed -i "s/^version=.*/version=${{ env.new_version }}/" gradle.properties
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add gradle.properties
+          git commit -m "Bump version to ${{ env.new_version }}" || echo "No version change to commit"
+
+          git remote set-url origin https://x-access-token:${{ secrets.PAT }}@github.com/${{ github.repository }}
+          git push origin main || echo "No changes pushed"
+
+      - name: Create Git tag
+        run: |
+          git tag "v${{ env.new_version }}" || echo "Tag already exists"
+          git push origin "v${{ env.new_version }}" || echo "Tag push skipped"
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: "v${{ env.new_version }}"
+          release_name: "Release v${{ env.new_version }}"
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+
+      - name: Find App JAR
+        run: echo "jar_app=build/libs/$(ls build/libs | grep -- '-all.jar$')" >> $GITHUB_ENV
+
+      - name: Upload App JAR
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.jar_app }}
+          asset_name: LocalMITMProxy-${{ env.new_version }}.jar
+          asset_content_type: application/java-archive
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
