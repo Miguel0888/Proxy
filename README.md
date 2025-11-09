@@ -190,7 +190,14 @@ Hinweise:
 
 1. Projekt bauen (Gradle).
 2. Anwendung starten (`ProxyControlFrame`).
-3. In JetBrains / System Proxy auf `127.0.0.1:<port>` setzen.
+3. In IntelliJ IDEA den HTTP-Proxy auf den lokalen Proxy setzen:
+
+   ![IntelliJ HTTP Proxy Konfiguration](docs/intellij-http-proxy.png)
+
+    - `Manual proxy configuration`
+    - `HTTP`
+    - Host name: `127.0.0.1`
+    - Port number: `8888` (oder dein konfigurierter Port)
 4. Optional:
    - „Generate MITM keystore“ ausführen, um `myproxy.jks` zu erzeugen.
    - Nur bei Bedarf: „Install CA into system trust store“ ausführen.

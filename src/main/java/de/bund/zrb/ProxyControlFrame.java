@@ -24,6 +24,10 @@ public class ProxyControlFrame extends JFrame {
     private static final String KEY_KEYSTORE_PATH = "proxy.keystore.path";
     private static final String KEY_MITM_ENABLED = "proxy.mitm.enabled";
 
+    private static final String KEY_REWRITE_ENABLED = "proxy.model.rewrite.enabled";
+    private static final String KEY_REWRITE_MODEL = "proxy.model.rewrite.name";
+    private static final String KEY_REWRITE_TEMPERATURE = "proxy.model.rewrite.temperature";
+
     // Resources inside the JAR (place scripts under src/main/resources/ps)
     private static final String RESOURCE_CREATE_CA = "/ps/create-ca.ps1";
     private static final String RESOURCE_OPENAI_CERT = "/ps/create-openai-cert.ps1";
@@ -34,6 +38,12 @@ public class ProxyControlFrame extends JFrame {
     private JTextField portField;
     private JTextField keystoreField;
     private JCheckBox mitmCheckBox;
+
+    // Rewrite config UI
+    private JCheckBox rewriteCheckBox;
+    private JTextField rewriteModelField;
+    private JTextField rewriteTemperatureField;
+
     private JLabel statusLabel;
     private JLabel urlLabel;
     private JButton startStopButton;
@@ -53,12 +63,18 @@ public class ProxyControlFrame extends JFrame {
         initActions();
         loadConfig();
         updateStatus();
+        updateRewriteControls();
     }
 
     private void initComponents() {
         portField = new JTextField(6);
         keystoreField = new JTextField(30);
         mitmCheckBox = new JCheckBox("Enable MITM for api.openai.com");
+
+        // Default rewrite: disabled, but sensible vorbelegung
+        rewriteCheckBox = new JCheckBox("Rewrite model/temperature for /v1/chat/completions");
+        rewriteModelField = new JTextField("gpt-5-mini", 16);
+        rewriteTemperatureField = new JTextField("1.0", 4);
 
         statusLabel = new JLabel("Status: stopped");
         statusLabel.setForeground(Color.RED);
@@ -102,6 +118,7 @@ public class ProxyControlFrame extends JFrame {
         row++;
         gc.gridx = 0;
         gc.gridy = row;
+        gc.gridwidth = 1;
         top.add(new JLabel("Keystore (.jks):"), gc);
 
         gc.gridx = 1;
@@ -117,6 +134,19 @@ public class ProxyControlFrame extends JFrame {
         gc.gridy = row;
         gc.gridwidth = 3;
         top.add(mitmCheckBox, gc);
+
+        // Rewrite row
+        row++;
+        gc.gridx = 0;
+        gc.gridy = row;
+        gc.gridwidth = 3;
+        JPanel rewritePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        rewritePanel.add(rewriteCheckBox);
+        rewritePanel.add(new JLabel("Model:"));
+        rewritePanel.add(rewriteModelField);
+        rewritePanel.add(new JLabel("→ Temperature:"));
+        rewritePanel.add(rewriteTemperatureField);
+        top.add(rewritePanel, gc);
 
         // Status
         row++;
@@ -157,6 +187,9 @@ public class ProxyControlFrame extends JFrame {
         applyButton.addActionListener(e -> applySettings());
         setupCertButton.addActionListener(e -> runCertSetup());
         installCaButton.addActionListener(e -> runInstallCa());
+
+        mitmCheckBox.addActionListener(e -> updateRewriteControls());
+        rewriteCheckBox.addActionListener(e -> updateRewriteControls());
     }
 
     private void toggleProxy() {
@@ -194,6 +227,30 @@ public class ProxyControlFrame extends JFrame {
                 return;
             }
 
+            // Read rewrite configuration from UI
+            boolean rewriteEnabled = rewriteCheckBox.isSelected();
+            String rewriteModel = null;
+            Double rewriteTemperature = null;
+
+            if (rewriteEnabled) {
+                rewriteModel = rewriteModelField.getText().trim();
+                if (rewriteModel.length() == 0) {
+                    showError("Model name must not be empty when rewrite is enabled.");
+                    return;
+                }
+                String tempText = rewriteTemperatureField.getText().trim();
+                if (tempText.length() == 0) {
+                    showError("Temperature must not be empty when rewrite is enabled.");
+                    return;
+                }
+                try {
+                    rewriteTemperature = Double.valueOf(tempText);
+                } catch (NumberFormatException ex) {
+                    showError("Temperature must be a valid decimal number.");
+                    return;
+                }
+            }
+
             MitmTrafficListener listener = new MitmTrafficListener() {
                 @Override
                 public void onTraffic(String direction, String text, boolean isJson) {
@@ -202,13 +259,21 @@ public class ProxyControlFrame extends JFrame {
             };
 
             try {
+                // Extend GenericMitmHandler to accept rewrite configuration
                 mitmHandler = new GenericMitmHandler(
                         ksFile.getAbsolutePath(),
                         "changeit",
                         Collections.singleton("api.openai.com"),
-                        listener
+                        listener,
+                        rewriteEnabled,
+                        rewriteModel,
+                        rewriteTemperature
                 );
-                appendTraffic("info", "MITM enabled for api.openai.com", false);
+
+                appendTraffic("info",
+                        mitmInfoMessage(mitmEnabled, rewriteEnabled, rewriteModel, rewriteTemperature),
+                        false
+                );
             } catch (IllegalStateException e) {
                 showError("Failed to initialize MITM: " + e.getMessage());
                 return;
@@ -227,6 +292,25 @@ public class ProxyControlFrame extends JFrame {
         }
 
         updateStatus();
+    }
+
+    private String mitmInfoMessage(boolean mitmEnabled,
+                                   boolean rewriteEnabled,
+                                   String rewriteModel,
+                                   Double rewriteTemperature) {
+        if (!mitmEnabled) {
+            return "MITM disabled.";
+        }
+        if (!rewriteEnabled) {
+            return "MITM enabled for api.openai.com without model/temperature rewrite.";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("MITM enabled for api.openai.com with rewrite: ");
+        sb.append("model == ").append(rewriteModel);
+        if (rewriteTemperature != null) {
+            sb.append(", temperature -> ").append(rewriteTemperature);
+        }
+        return sb.toString();
     }
 
     private void stopProxy() {
@@ -278,7 +362,17 @@ public class ProxyControlFrame extends JFrame {
         });
     }
 
-    private void appendTraffic(String direction, String text, boolean isJson) {
+    private void updateRewriteControls() {
+        boolean mitm = mitmCheckBox.isSelected();
+
+        rewriteCheckBox.setEnabled(mitm);
+
+        boolean rewriteEnabled = mitm && rewriteCheckBox.isSelected();
+        rewriteModelField.setEnabled(rewriteEnabled);
+        rewriteTemperatureField.setEnabled(rewriteEnabled);
+    }
+
+    private void appendTraffic(final String direction, final String text, final boolean isJson) {
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
@@ -385,6 +479,8 @@ public class ProxyControlFrame extends JFrame {
             portField.setText("8888");
             keystoreField.setText(defaultKeystorePath());
             mitmCheckBox.setSelected(false);
+            rewriteCheckBox.setSelected(false);
+            updateRewriteControls();
             return;
         }
 
@@ -398,17 +494,31 @@ public class ProxyControlFrame extends JFrame {
             String ks = props.getProperty(KEY_KEYSTORE_PATH, defaultKeystorePath());
             String mitm = props.getProperty(KEY_MITM_ENABLED, "false");
 
+            boolean rewriteEnabled = Boolean.parseBoolean(
+                    props.getProperty(KEY_REWRITE_ENABLED, "false")
+            );
+            String rewriteModel = props.getProperty(KEY_REWRITE_MODEL, "gpt-5-mini");
+            String rewriteTemp = props.getProperty(KEY_REWRITE_TEMPERATURE, "1.0");
+
             portField.setText(port);
             keystoreField.setText(ks);
             mitmCheckBox.setSelected(Boolean.parseBoolean(mitm));
+
+            rewriteCheckBox.setSelected(rewriteEnabled);
+            rewriteModelField.setText(rewriteModel);
+            rewriteTemperatureField.setText(rewriteTemp);
+
         } catch (IOException e) {
             showError("Failed to load config: " + e.getMessage());
             portField.setText("8888");
             keystoreField.setText(defaultKeystorePath());
             mitmCheckBox.setSelected(false);
+            rewriteCheckBox.setSelected(false);
         } finally {
             closeQuietly(in);
         }
+
+        updateRewriteControls();
     }
 
     private boolean saveConfig() {
@@ -420,6 +530,7 @@ public class ProxyControlFrame extends JFrame {
 
         String keystorePath = keystoreField.getText().trim();
         boolean mitmEnabled = mitmCheckBox.isSelected();
+        boolean rewriteEnabled = rewriteCheckBox.isSelected();
 
         File dir = getConfigDir();
         if (!dir.exists() && !dir.mkdirs()) {
@@ -431,6 +542,9 @@ public class ProxyControlFrame extends JFrame {
         props.setProperty(KEY_PORT, String.valueOf(port));
         props.setProperty(KEY_KEYSTORE_PATH, keystorePath);
         props.setProperty(KEY_MITM_ENABLED, String.valueOf(mitmEnabled));
+        props.setProperty(KEY_REWRITE_ENABLED, String.valueOf(rewriteEnabled));
+        props.setProperty(KEY_REWRITE_MODEL, rewriteModelField.getText().trim());
+        props.setProperty(KEY_REWRITE_TEMPERATURE, rewriteTemperatureField.getText().trim());
 
         File file = getConfigFile();
         FileOutputStream out = null;
@@ -463,7 +577,12 @@ public class ProxyControlFrame extends JFrame {
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
-                JOptionPane.showMessageDialog(ProxyControlFrame.this, message, "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(
+                        ProxyControlFrame.this,
+                        message,
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE
+                );
             }
         });
     }
@@ -545,6 +664,7 @@ public class ProxyControlFrame extends JFrame {
                         keystoreField.setText(ks.getAbsolutePath());
                         mitmCheckBox.setSelected(true);
                         saveConfig();
+                        updateRewriteControls();
                         appendTraffic("setup", "myproxy.jks detected and MITM enabled in UI.", false);
                     } else {
                         showError("myproxy.jks was not created. Check PowerShell output.");
