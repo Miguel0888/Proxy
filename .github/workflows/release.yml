@@ -8,6 +8,7 @@ on:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
 
     steps:
       - name: Checkout repository
@@ -16,18 +17,14 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '8'
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Print project structure
-        run: ./gradlew projects
-
       - name: Build shadow jar
-        run: |
-          ./gradlew clean shadowJar
+        run: ./gradlew clean shadowJar
 
       - name: Determine and bump version
         id: version
@@ -53,9 +50,7 @@ jobs:
 
           git add gradle.properties
           git commit -m "Bump version to ${{ env.new_version }}" || echo "No version change to commit"
-
-          git remote set-url origin https://x-access-token:${{ secrets.PAT }}@github.com/${{ github.repository }}
-          git push origin main || echo "No changes pushed"
+          git push origin master || echo "No changes pushed"
 
       - name: Create Git tag
         run: |
@@ -71,10 +66,16 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Find App JAR
-        run: echo "jar_app=build/libs/$(ls build/libs | grep -- '-all.jar$')" >> $GITHUB_ENV
+        run: |
+          jar_file=$(ls build/libs | grep -- '-all.jar$' | head -n 1)
+          if [ -z "$jar_file" ]; then
+            echo "No *-all.jar found in build/libs" >&2
+            exit 1
+          fi
+          echo "jar_app=build/libs/$jar_file" >> $GITHUB_ENV
 
       - name: Upload App JAR
         uses: actions/upload-release-asset@v1
@@ -84,4 +85,4 @@ jobs:
           asset_name: LocalMITMProxy-${{ env.new_version }}.jar
           asset_content_type: application/java-archive
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
