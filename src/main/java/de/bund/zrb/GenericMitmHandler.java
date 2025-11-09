@@ -1,16 +1,15 @@
 package de.bund.zrb;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
-import java.io.ByteArrayOutputStream;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.FileInputStream;
+import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.security.KeyStore;
@@ -22,45 +21,43 @@ public class GenericMitmHandler implements MitmHandler {
 
     private static final int CONNECT_TIMEOUT_MILLIS = 15000;
     private static final int READ_TIMEOUT_MILLIS = 60000;
-    private static final int MAX_HEADER_BYTES = 32 * 1024;
-    private static final int MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+    private static final int MAX_HEADER_BYTES = 64 * 1024;
+    private static final int MAX_BODY_BYTES = 1_048_576; // 1 MB
 
     private final SSLContext serverSslContext;
     private final SSLSocketFactory clientSslFactory;
     private final Set<String> mitmHosts;
     private final MitmTrafficListener trafficListener;
 
+    // Rewrite-Konfiguration
     private final boolean rewriteEnabled;
-    private final String targetModel;
-    private final Double targetTemperature;
+    private final String modelToPatch;          // z.B. "gpt-5-mini"
+    private final Double targetTemperature;     // z.B. 1.0; null = Temperatur nicht anfassen
 
+    private final Gson gson = new Gson();
+
+    // Hauptkonstruktor (wird von ProxyControlFrame verwendet)
     public GenericMitmHandler(String keyStorePath,
                               String keyStorePassword,
                               Set<String> mitmHosts,
                               MitmTrafficListener trafficListener,
                               boolean rewriteEnabled,
-                              String targetModel,
+                              String modelToPatch,
                               Double targetTemperature) {
         try {
             this.serverSslContext = createServerSslContext(keyStorePath, keyStorePassword);
             this.clientSslFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
             this.mitmHosts = normalizeHosts(mitmHosts);
             this.trafficListener = trafficListener;
-
             this.rewriteEnabled = rewriteEnabled;
-            if (targetModel != null) {
-                String trimmed = targetModel.trim();
-                this.targetModel = trimmed.length() > 0 ? trimmed : null;
-            } else {
-                this.targetModel = null;
-            }
+            this.modelToPatch = modelToPatch != null ? modelToPatch.trim() : null;
             this.targetTemperature = targetTemperature;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to initialize GenericMitmHandler: " + e.getMessage(), e);
         }
     }
 
-    // Backwards-compatible convenience constructors
+    // Convenience-Konstruktor (ohne Rewrite)
     public GenericMitmHandler(String keyStorePath,
                               String keyStorePassword,
                               Set<String> mitmHosts,
@@ -68,37 +65,29 @@ public class GenericMitmHandler implements MitmHandler {
         this(keyStorePath, keyStorePassword, mitmHosts, trafficListener, false, null, null);
     }
 
-    public GenericMitmHandler(String keyStorePath, String keyStorePassword) {
-        this(keyStorePath, keyStorePassword, Collections.<String>emptySet(), null, false, null, null);
-    }
-
     @Override
     public boolean supports(String host, int port) {
-        if (host == null || port != 443) {
-            return false;
-        }
+        if (host == null || port != 443) return false;
         String h = host.toLowerCase();
-        if (mitmHosts.isEmpty()) {
-            return true;
-        }
+        if (mitmHosts.isEmpty()) return true;
         return mitmHosts.contains(h);
     }
 
     @Override
     public void handleConnect(String host, int port, Socket clientSocket) throws IOException {
-        // 1) TLS to real server
+        // TLS zum echten Server
         SSLSocket remote = (SSLSocket) clientSslFactory.createSocket();
         remote.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
         remote.setSoTimeout(READ_TIMEOUT_MILLIS);
         remote.startHandshake();
         log("[MITM] Connected TLS to " + host + ":" + port);
 
-        // 2) Confirm CONNECT to client
+        // CONNECT bestätigen
         OutputStream clientOutPlain = clientSocket.getOutputStream();
         clientOutPlain.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes("ISO-8859-1"));
         clientOutPlain.flush();
 
-        // 3) TLS towards client with our cert
+        // TLS ggü. Client mit unserem Zert
         SSLSocket clientTls = (SSLSocket) serverSslContext
                 .getSocketFactory()
                 .createSocket(clientSocket, host, port, true);
@@ -108,88 +97,79 @@ public class GenericMitmHandler implements MitmHandler {
         clientTls.startHandshake();
         log("[MITM] Established TLS with client for " + host + ":" + port);
 
-        // 4) Handle first request (optional rewrite) then tunnel
-        boolean initialHandled = handleInitialClientRequestWithOptionalRewrite(clientTls, remote);
+        // erste Request ggf. patchen
+        handleFirstRequest(clientTls, remote);
 
-        // 5) Tunnel rest of traffic
-        if (initialHandled) {
-            startBidirectionalTunnel(clientTls, remote);
-        } else {
-            startBidirectionalTunnel(clientTls, remote);
-        }
+        // rest tunneln
+        startBidirectionalTunnel(clientTls, remote);
     }
 
-    // Read one HTTP request, optionally rewrite JSON, forward to remote.
-    private boolean handleInitialClientRequestWithOptionalRewrite(SSLSocket clientTls,
-                                                                  SSLSocket remote) {
+    private void handleFirstRequest(SSLSocket clientTls, SSLSocket remote) {
         try {
             InputStream in = clientTls.getInputStream();
             OutputStream out = remote.getOutputStream();
 
-            // 1) Read headers (incl. request line)
-            ByteArrayOutputStream headerBuffer = new ByteArrayOutputStream();
-            if (!readUntilDoubleCrlf(in, headerBuffer, MAX_HEADER_BYTES)) {
-                log("[MITM] Failed to read request headers");
-                return false;
+            // Headers lesen
+            ByteArrayOutputStream headerBuf = new ByteArrayOutputStream();
+            if (!readUntilDoubleCrlf(in, headerBuf, MAX_HEADER_BYTES)) {
+                log("[MITM] Failed to read full request headers");
+                return;
             }
 
-            byte[] headerBytes = headerBuffer.toByteArray();
-            if (headerBytes.length < 4) {
-                log("[MITM] Header too short");
-                return false;
-            }
+            byte[] headerBytes = headerBuf.toByteArray();
+            String headerStr = new String(headerBytes, "ISO-8859-1");
+            logTraffic("client->server headers", headerStr, false);
 
-            int headerLen = headerBytes.length - 4; // strip trailing \r\n\r\n
-            String headers = new String(headerBytes, 0, headerLen, "UTF-8");
+            int contentLength = parseContentLength(headerStr);
 
-            int contentLength = parseContentLength(headers);
-            boolean hasBody = contentLength > 0 && contentLength <= MAX_BODY_BYTES;
-
-            String body = "";
-            if (hasBody) {
-                byte[] bodyBytes = readFixedBytes(in, contentLength);
-                if (bodyBytes == null) {
-                    log("[MITM] Failed to read full request body");
-                    return false;
+            if (contentLength <= 0 || contentLength > MAX_BODY_BYTES) {
+                // nichts zu patchen / zu groß -> direkt weiter
+                out.write(headerBytes);
+                out.flush();
+                if (contentLength > 0) {
+                    pipeFixed(in, out, contentLength);
                 }
-                body = new String(bodyBytes, "UTF-8");
+                return;
             }
 
-            // Logging original
-            logTraffic("client->server headers", headers, false);
-            if (hasBody) {
-                logTraffic("client->server body", body, looksLikeJson(body));
+            // Body lesen
+            byte[] bodyBytes = readFixedBytes(in, contentLength);
+            if (bodyBytes == null) {
+                log("[MITM] Failed to read full request body");
+                return;
             }
 
-            String headersToSend = headers;
-            String bodyToSend = body;
+            String body = new String(bodyBytes, "UTF-8");
+            logTraffic("client->server body", body, looksLikeJson(body));
 
-            // 2) Optional rewrite (only if enabled & conditions match)
-            if (rewriteEnabled && hasBody && isChatCompletionsRequest(headers) && looksLikeJson(body)) {
-                ModifiedRequest modified = modifyRequest(headers, body);
-                if (modified.modified) {
-                    headersToSend = modified.headers;
-                    bodyToSend = modified.body;
-                    logTraffic("client->server body (modified)",
-                            bodyToSend, looksLikeJson(bodyToSend));
-                }
+            // nur /v1/chat/completions + Rewrite aktiv + passendes Modell anfassen
+            if (!rewriteEnabled || !isChatCompletionsRequest(headerStr)) {
+                out.write(headerBytes);
+                out.write(bodyBytes);
+                out.flush();
+                return;
             }
 
-            // 3) Forward
-            ByteArrayOutputStream forward = new ByteArrayOutputStream();
-            forward.write(headersToSend.getBytes("UTF-8"));
-            forward.write("\r\n\r\n".getBytes("UTF-8"));
-            if (hasBody && bodyToSend != null && bodyToSend.length() > 0) {
-                forward.write(bodyToSend.getBytes("UTF-8"));
+            String patchedBody = patchJsonBodyIfNeeded(body);
+            if (patchedBody == null || patchedBody.equals(body)) {
+                out.write(headerBytes);
+                out.write(bodyBytes);
+                out.flush();
+                return;
             }
 
-            out.write(forward.toByteArray());
+            byte[] patchedBytes = patchedBody.getBytes("UTF-8");
+            String fixedHeaders = replaceContentLength(headerStr, patchedBytes.length);
+
+            log("[MITM] Request body modified for model=" + modelToPatch);
+            logTraffic("client->server body (modified)", patchedBody, true);
+
+            out.write(fixedHeaders.getBytes("ISO-8859-1"));
+            out.write(patchedBytes);
             out.flush();
 
-            return true;
         } catch (Exception e) {
-            log("[MITM] Error during initial request handling: " + e.getMessage());
-            return false;
+            log("[MITM] Error in first request handling: " + e.getMessage());
         }
     }
 
@@ -211,37 +191,76 @@ public class GenericMitmHandler implements MitmHandler {
         }
     }
 
-    // Read bytes until "\r\n\r\n" or limit.
+    // ---- JSON Patch ----
+
+    private String patchJsonBodyIfNeeded(String body) {
+        try {
+            if (!looksLikeJson(body) || modelToPatch == null || modelToPatch.isEmpty()) {
+                return body;
+            }
+
+            JsonElement root = JsonParser.parseString(body);
+            if (!root.isJsonObject()) {
+                return body;
+            }
+
+            JsonObject obj = root.getAsJsonObject();
+
+            if (!obj.has("model")) {
+                return body;
+            }
+
+            String model = obj.get("model").getAsString();
+            if (!modelToPatch.equalsIgnoreCase(model.trim())) {
+                return body;
+            }
+
+            boolean changed = false;
+
+            if (targetTemperature != null) {
+                obj.addProperty("temperature", targetTemperature);
+                changed = true;
+            }
+
+            if (!changed) {
+                return body;
+            }
+
+            return gson.toJson(obj);
+
+        } catch (Exception e) {
+            log("[MITM] JSON patch failed: " + e.getMessage());
+            return body;
+        }
+    }
+
+    // ---- Helper ----
+
+    private boolean isChatCompletionsRequest(String headers) {
+        if (headers == null) return false;
+        String lower = headers.toLowerCase();
+        int end = lower.indexOf("\r\n");
+        String requestLine = (end > 0) ? lower.substring(0, end) : lower;
+        return requestLine.startsWith("post /v1/chat/completions ");
+    }
+
     private boolean readUntilDoubleCrlf(InputStream in,
                                         ByteArrayOutputStream buffer,
                                         int maxBytes) throws IOException {
         int state = 0;
         while (buffer.size() < maxBytes) {
             int b = in.read();
-            if (b == -1) {
-                return false;
-            }
+            if (b == -1) return false;
             buffer.write(b);
 
             switch (state) {
-                case 0:
-                    state = (b == '\r') ? 1 : 0;
-                    break;
-                case 1:
-                    state = (b == '\n') ? 2 : 0;
-                    break;
-                case 2:
-                    state = (b == '\r') ? 3 : 0;
-                    break;
+                case 0: state = (b == '\r') ? 1 : 0; break;
+                case 1: state = (b == '\n') ? 2 : 0; break;
+                case 2: state = (b == '\r') ? 3 : 0; break;
                 case 3:
-                    if (b == '\n') {
-                        return true;
-                    } else {
-                        state = 0;
-                    }
-                    break;
-                default:
+                    if (b == '\n') return true;
                     state = 0;
+                    break;
             }
         }
         return false;
@@ -249,15 +268,14 @@ public class GenericMitmHandler implements MitmHandler {
 
     private int parseContentLength(String headers) {
         String[] lines = headers.split("\r\n");
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i];
+        for (String line : lines) {
             int colon = line.indexOf(':');
             if (colon > 0) {
                 String name = line.substring(0, colon).trim();
                 if ("content-length".equalsIgnoreCase(name)) {
-                    String value = line.substring(colon + 1).trim();
+                    String v = line.substring(colon + 1).trim();
                     try {
-                        return Integer.parseInt(value);
+                        return Integer.parseInt(v);
                     } catch (NumberFormatException ignored) {
                         return -1;
                     }
@@ -272,100 +290,44 @@ public class GenericMitmHandler implements MitmHandler {
         int off = 0;
         while (off < length) {
             int r = in.read(data, off, length - off);
-            if (r == -1) {
-                return null;
-            }
+            if (r == -1) return null;
             off += r;
         }
         return data;
     }
 
-    private boolean isChatCompletionsRequest(String headers) {
-        if (headers == null) {
-            return false;
-        }
-        String lower = headers.toLowerCase();
-        return lower.startsWith("post /v1/chat/completions ")
-                || lower.contains("\npost /v1/chat/completions ");
-    }
-
-    // Core rewrite logic based on current configuration.
-    private ModifiedRequest modifyRequest(String headers, String body) {
-        boolean modified = false;
-
-        try {
-            com.google.gson.Gson gson = new com.google.gson.GsonBuilder().create();
-            com.google.gson.JsonElement root = gson.fromJson(body, com.google.gson.JsonElement.class);
-            if (root == null || !root.isJsonObject()) {
-                return new ModifiedRequest(headers, body, false);
-            }
-
-            com.google.gson.JsonObject obj = root.getAsJsonObject();
-
-            // Rewrite model if configured
-            if (targetModel != null && obj.has("model")) {
-                String originalModel = obj.get("model").getAsString();
-                if (!targetModel.equals(originalModel)) {
-                    obj.addProperty("model", targetModel);
-                    modified = true;
-                    log("[MITM] Rewrote model: " + originalModel + " -> " + targetModel);
-                }
-            }
-
-            // Rewrite temperature if configured
-            if (targetTemperature != null) {
-                double desired = targetTemperature.doubleValue();
-                boolean change = true;
-
-                if (obj.has("temperature")) {
-                    try {
-                        double existing = obj.get("temperature").getAsDouble();
-                        if (Double.compare(existing, desired) == 0) {
-                            change = false;
-                        }
-                    } catch (Exception ignored) {
-                        // Ignore malformed value, will overwrite below
-                    }
-                }
-
-                if (change) {
-                    obj.addProperty("temperature", desired);
-                    modified = true;
-                    log("[MITM] Set temperature -> " + desired);
-                }
-            }
-
-            if (!modified) {
-                return new ModifiedRequest(headers, body, false);
-            }
-
-            String newBody = gson.toJson(obj);
-            int newLen = newBody.getBytes("UTF-8").length;
-            String newHeaders = replaceContentLength(headers, newLen);
-
-            return new ModifiedRequest(newHeaders, newBody, true);
-
-        } catch (Exception e) {
-            log("[MITM] Failed to modify JSON: " + e.getMessage());
-            return new ModifiedRequest(headers, body, false);
+    private void pipeFixed(InputStream in, OutputStream out, int length) throws IOException {
+        byte[] buf = new byte[8192];
+        int remaining = length;
+        while (remaining > 0) {
+            int r = in.read(buf, 0, Math.min(buf.length, remaining));
+            if (r == -1) throw new EOFException("Unexpected EOF");
+            out.write(buf, 0, r);
+            remaining -= r;
         }
     }
 
-    private String replaceContentLength(String headers, int newLength) {
-        String[] lines = headers.split("\r\n");
+    private boolean looksLikeJson(String text) {
+        if (text == null) return false;
+        String t = text.trim();
+        return (t.startsWith("{") && t.endsWith("}"))
+                || (t.startsWith("[") && t.endsWith("]"));
+    }
+
+    private String replaceContentLength(String headerBlock, int newLen) {
+        int sep = headerBlock.indexOf("\r\n\r\n");
+        String headersOnly = (sep >= 0) ? headerBlock.substring(0, sep) : headerBlock;
+
+        String[] lines = headersOnly.split("\r\n");
         StringBuilder sb = new StringBuilder();
         boolean replaced = false;
 
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i];
-            if (line.length() == 0) {
-                continue;
-            }
+        for (String line : lines) {
             int colon = line.indexOf(':');
             if (colon > 0) {
                 String name = line.substring(0, colon).trim();
                 if ("content-length".equalsIgnoreCase(name)) {
-                    sb.append("Content-Length: ").append(newLength).append("\r\n");
+                    sb.append("Content-Length: ").append(newLen).append("\r\n");
                     replaced = true;
                     continue;
                 }
@@ -374,19 +336,11 @@ public class GenericMitmHandler implements MitmHandler {
         }
 
         if (!replaced) {
-            sb.append("Content-Length: ").append(newLength).append("\r\n");
+            sb.append("Content-Length: ").append(newLen).append("\r\n");
         }
 
+        sb.append("\r\n");
         return sb.toString();
-    }
-
-    private boolean looksLikeJson(String text) {
-        if (text == null) {
-            return false;
-        }
-        String trimmed = text.trim();
-        return (trimmed.startsWith("{") && trimmed.endsWith("}"))
-                || (trimmed.startsWith("[") && trimmed.endsWith("]"));
     }
 
     private void logTraffic(String direction, String text, boolean isJson) {
@@ -394,18 +348,16 @@ public class GenericMitmHandler implements MitmHandler {
             trafficListener.onTraffic(direction, text, isJson);
         } else {
             if (isJson) {
-                log("[MITM][" + direction + "] JSON length=" + text.length());
+                log("[MITM][" + direction + "] JSON len=" + (text != null ? text.length() : 0));
             } else {
                 log("[MITM][" + direction + "] " + cut(text, 300));
             }
         }
     }
 
-    private String cut(String text, int max) {
-        if (text == null || text.length() <= max) {
-            return text;
-        }
-        return text.substring(0, max) + "...";
+    private String cut(String s, int max) {
+        if (s == null || s.length() <= max) return s;
+        return s.substring(0, max) + "...";
     }
 
     private void log(String msg) {
@@ -430,42 +382,21 @@ public class GenericMitmHandler implements MitmHandler {
     }
 
     private Set<String> normalizeHosts(Set<String> hosts) {
-        if (hosts == null || hosts.isEmpty()) {
-            return Collections.emptySet();
-        }
-        Set<String> result = new HashSet<String>();
+        if (hosts == null || hosts.isEmpty()) return Collections.emptySet();
+        Set<String> out = new HashSet<String>();
         for (String h : hosts) {
             if (h != null) {
-                String trimmed = h.trim();
-                if (!trimmed.isEmpty()) {
-                    result.add(trimmed.toLowerCase());
-                }
+                String t = h.trim().toLowerCase();
+                if (!t.isEmpty()) out.add(t);
             }
         }
-        return result;
+        return out;
     }
 
-    private void closeQuietly(Socket socket) {
-        if (socket == null) {
-            return;
-        }
+    private void closeQuietly(Socket s) {
+        if (s == null) return;
         try {
-            socket.close();
-        } catch (IOException ignored) {
-            // Ignore
-        }
-    }
-
-    // Simple holder for modified request
-    private static final class ModifiedRequest {
-        final String headers;
-        final String body;
-        final boolean modified;
-
-        ModifiedRequest(String headers, String body, boolean modified) {
-            this.headers = headers;
-            this.body = body;
-            this.modified = modified;
-        }
+            s.close();
+        } catch (IOException ignored) { }
     }
 }
