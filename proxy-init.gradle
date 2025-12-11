@@ -1,0 +1,28 @@
+gradle.beforeProject { project ->
+
+    def psScript = new File(project.rootProject.projectDir, 'get-proxy-from-pac.ps1')
+    if (!psScript.exists()) {
+        println "Proxy script not found at: ${psScript}"
+        return
+    }
+
+    def proc = ['powershell', '-ExecutionPolicy', 'Bypass', '-File', psScript.absolutePath].execute()
+    def stdout = new StringBuilder()
+    def stderr = new StringBuilder()
+    proc.consumeProcessOutput(stdout, stderr)
+    proc.waitFor()
+
+    if (proc.exitValue() == 0) {
+        def proxyHostPort = stdout.toString().trim()
+        def (host, portRaw) = proxyHostPort.split(":")
+        def port = portRaw.replaceAll("[^\\d]", "") // nur Zahlen erlauben
+
+        println "Using proxy from PowerShell: ${host}:${port}"
+        System.setProperty("http.proxyHost", host)
+        System.setProperty("http.proxyPort", port)
+        System.setProperty("https.proxyHost", host)
+        System.setProperty("https.proxyPort", port)
+    } else {
+        println "PowerShell proxy script failed (${proc.exitValue()}): ${stderr.toString().trim()}"
+    }
+}
