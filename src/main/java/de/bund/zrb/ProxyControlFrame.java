@@ -120,6 +120,10 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         menuBar = new JMenuBar();
 
         JMenu fileMenu = new JMenu("File");
+        JMenuItem preferencesItem = new JMenuItem("Preferences...");
+        preferencesItem.addActionListener(e -> openPreferencesDialog());
+        fileMenu.add(preferencesItem);
+
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> dispose());
         fileMenu.add(exitItem);
@@ -166,77 +170,41 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         content.setBorder(new EmptyBorder(10, 10, 10, 10));
         setContentPane(content);
 
-        JPanel top = new JPanel(new GridBagLayout());
+        JPanel north = new JPanel(new BorderLayout());
+        north.add(toolBar, BorderLayout.NORTH);
+
+        // ein kompakter Statusbereich anstelle der kompletten Settings-Grid direkt im Frame
+        JPanel statusPanel = new JPanel(new GridBagLayout());
         GridBagConstraints gc = new GridBagConstraints();
         gc.insets = new Insets(4, 4, 4, 4);
         gc.anchor = GridBagConstraints.WEST;
         gc.fill = GridBagConstraints.HORIZONTAL;
 
         int row = 0;
-
-        // Port
         gc.gridx = 0;
         gc.gridy = row;
         gc.gridwidth = 1;
-        top.add(new JLabel("Port:"), gc);
+        statusPanel.add(new JLabel("Port:"), gc);
 
         gc.gridx = 1;
-        top.add(portField, gc);
+        statusPanel.add(portField, gc);
 
         gc.gridx = 2;
-        top.add(gatewayCheckBox, gc);
+        statusPanel.add(gatewayCheckBox, gc);
 
-        // Keystore
-        row++;
-        gc.gridx = 0;
-        gc.gridy = row;
-        gc.gridwidth = 1;
-        top.add(new JLabel("Keystore (.jks):"), gc);
-
-        gc.gridx = 1;
-        top.add(keystoreField, gc);
-
-        JButton browseButton = new JButton("Browse...");
-        gc.gridx = 2;
-        top.add(browseButton, gc);
-
-        // MITM checkbox
         row++;
         gc.gridx = 0;
         gc.gridy = row;
         gc.gridwidth = 3;
-        top.add(mitmCheckBox, gc);
+        statusPanel.add(statusLabel, gc);
 
-        // Rewrite row
         row++;
         gc.gridx = 0;
         gc.gridy = row;
         gc.gridwidth = 3;
-        JPanel rewritePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        rewritePanel.add(rewriteCheckBox);
-        rewritePanel.add(new JLabel("Model:"));
-        rewritePanel.add(rewriteModelField);
-        rewritePanel.add(new JLabel("→ Temperature:"));
-        rewritePanel.add(rewriteTemperatureField);
-        top.add(rewritePanel, gc);
+        statusPanel.add(urlLabel, gc);
 
-        // Status
-        row++;
-        gc.gridx = 0;
-        gc.gridy = row;
-        gc.gridwidth = 3;
-        top.add(statusLabel, gc);
-
-        // URL
-        row++;
-        gc.gridx = 0;
-        gc.gridy = row;
-        gc.gridwidth = 3;
-        top.add(urlLabel, gc);
-
-        JPanel north = new JPanel(new BorderLayout());
-        north.add(toolBar, BorderLayout.NORTH);
-        north.add(top, BorderLayout.CENTER);
+        north.add(statusPanel, BorderLayout.CENTER);
 
         content.add(north, BorderLayout.NORTH);
         content.add(new JScrollPane(trafficPane), BorderLayout.CENTER);
@@ -246,8 +214,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         statusBar.add(publicIpLabel, BorderLayout.WEST);
         statusBar.add(clientInfoLabel, BorderLayout.EAST);
         content.add(statusBar, BorderLayout.SOUTH);
-
-        browseButton.addActionListener(e -> chooseKeystore());
     }
 
     private void initActions() {
@@ -730,6 +696,17 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         } catch (IOException ignored) {
             // Ignore
         }
+    }
+
+    private void openPreferencesDialog() {
+        ProxyPreferencesDialog dialog = new ProxyPreferencesDialog(this, configService);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+
+        // nach dem Schließen des Dialogs Config neu laden und Status aktualisieren
+        loadConfig();
+        updateStatus();
+        updateRewriteControls();
     }
 
     public static void main(String[] args) {
