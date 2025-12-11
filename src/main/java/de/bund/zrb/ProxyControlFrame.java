@@ -52,6 +52,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private JLabel publicIpLabel;
     private JLabel clientInfoLabel;
 
+    private JMenuBar menuBar;
+    private JToolBar toolBar;
+
     private JButton startStopButton;
     private JButton applyButton;
     private JButton setupCertButton;
@@ -108,6 +111,54 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         trafficPane.setContentType("text/html");
         trafficPane.setEditable(false);
         trafficPane.setText("<html><body style='font-family:monospace;font-size:11px;'></body></html>");
+
+        initMenuBar();
+        initToolBar();
+    }
+
+    private void initMenuBar() {
+        menuBar = new JMenuBar();
+
+        JMenu fileMenu = new JMenu("File");
+        JMenuItem exitItem = new JMenuItem("Exit");
+        exitItem.addActionListener(e -> dispose());
+        fileMenu.add(exitItem);
+
+        JMenu settingsMenu = new JMenu("Settings");
+        JMenuItem applySettingsItem = new JMenuItem("Apply settings");
+        applySettingsItem.addActionListener(e -> applySettings());
+        settingsMenu.add(applySettingsItem);
+
+        JMenu mitmMenu = new JMenu("MITM");
+        JMenuItem generateKeystoreItem = new JMenuItem("Generate MITM keystore");
+        generateKeystoreItem.addActionListener(e -> runCertSetup());
+        JMenuItem installCaItem = new JMenuItem("Install CA into trust store");
+        installCaItem.addActionListener(e -> runInstallCa());
+        mitmMenu.add(generateKeystoreItem);
+        mitmMenu.add(installCaItem);
+
+        JMenu proxyMenu = new JMenu("Proxy");
+        JMenuItem startStopItem = new JMenuItem("Start/Stop proxy");
+        startStopItem.addActionListener(e -> toggleProxy());
+        proxyMenu.add(startStopItem);
+
+        menuBar.add(fileMenu);
+        menuBar.add(settingsMenu);
+        menuBar.add(mitmMenu);
+        menuBar.add(proxyMenu);
+
+        setJMenuBar(menuBar);
+    }
+
+    private void initToolBar() {
+        toolBar = new JToolBar();
+        toolBar.setFloatable(false);
+
+        toolBar.add(startStopButton);
+        toolBar.add(applyButton);
+        toolBar.addSeparator();
+        toolBar.add(setupCertButton);
+        toolBar.add(installCaButton);
     }
 
     private void layoutComponents() {
@@ -183,15 +234,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         gc.gridwidth = 3;
         top.add(urlLabel, gc);
 
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        buttons.add(setupCertButton);
-        buttons.add(installCaButton);
-        buttons.add(applyButton);
-        buttons.add(startStopButton);
-
         JPanel north = new JPanel(new BorderLayout());
+        north.add(toolBar, BorderLayout.NORTH);
         north.add(top, BorderLayout.CENTER);
-        north.add(buttons, BorderLayout.SOUTH);
 
         content.add(north, BorderLayout.NORTH);
         content.add(new JScrollPane(trafficPane), BorderLayout.CENTER);
