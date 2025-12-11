@@ -79,7 +79,11 @@ class SocketGatewaySession implements GatewaySession {
         writer.flush();
 
         String line = reader.readLine();
-        if (line == null || !"OK".equals(line.trim())) {
+        if (line == null) {
+            busy = false;
+            throw new IOException("Gateway did not confirm tunnel: control connection closed");
+        }
+        if (!"OK".equals(line.trim())) {
             busy = false;
             throw new IOException("Gateway did not confirm tunnel: " + line);
         }
@@ -97,8 +101,8 @@ class SocketGatewaySession implements GatewaySession {
     }
 
     /**
-     * Run loop: blocks until control socket is closed. For this simple protocol there
-     * is no additional control traffic after CONNECT/OK, so we just wait.
+     * Run loop: waits until session is marked not alive. We do NOT read from the
+     * control socket here to avoid racing with openTunnel() which uses the same reader.
      */
     void run() {
         // Server-UI: Gateway-Client ist verbunden
@@ -106,8 +110,14 @@ class SocketGatewaySession implements GatewaySession {
             view.updateGatewayClientStatus("Gateway client connected: " + remoteAddress, true);
         }
         try {
-            controlSocket.getInputStream().read(); // block until closed
-        } catch (IOException ignored) {
+            while (isAlive()) {
+                try {
+                    Thread.sleep(500L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         } finally {
             alive = false;
             sessionManager.clearActiveSession(this);

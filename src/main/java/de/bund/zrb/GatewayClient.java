@@ -119,6 +119,16 @@ class GatewayClient {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        } catch (IOException e) {
+            log("GatewayClient: failed to open local connection to " + targetHost + ":" + targetPort
+                    + " -> " + e.getMessage());
+            try {
+                writer.write("ERROR\r\n");
+                writer.flush();
+            } catch (IOException ignored) {
+                // ignore secondary failure
+            }
+            throw e;
         }
     }
 

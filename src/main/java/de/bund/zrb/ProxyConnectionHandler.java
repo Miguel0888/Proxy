@@ -175,10 +175,10 @@ public class ProxyConnectionHandler {
             try {
                 remoteSocket = outboundConnectionProvider.openConnectTunnel(host, port);
             } catch (IOException e) {
-                // Wenn wir im GATEWAY-Modus sind und noch keine Session haben, blocken wir alles
                 String msg = e.getMessage();
-                if (msg != null && msg.contains("No active gateway session available")) {
-                    System.out.println("[Proxy] Reject CONNECT because no active gateway session is available");
+                if (msg != null && (msg.contains("No active gateway session available")
+                        || msg.contains("Gateway did not confirm tunnel"))) {
+                    System.out.println("[Proxy] Reject CONNECT because " + msg);
                     writeServiceUnavailable(clientSocket.getOutputStream());
                     return;
                 }
