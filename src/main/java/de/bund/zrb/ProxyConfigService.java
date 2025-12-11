@@ -20,6 +20,7 @@ class ProxyConfigService {
     private static final String KEY_PROXY_MODE = "proxy.mode"; // values: SERVER or CLIENT
     private static final String KEY_CLIENT_HOST = "proxy.client.host";
     private static final String KEY_CLIENT_PORT = "proxy.client.port";
+    private static final String KEY_SHOW_HELP_ON_START = "proxy.showHelpOnStart";
 
     ProxyConfig loadConfig() {
         File file = getConfigFile();
@@ -59,8 +60,17 @@ class ProxyConfigService {
                 clientPort = 8888;
             }
 
-            return new ProxyConfig(port, ks, mitm, rewriteEnabled, rewriteModel, rewriteTemp,
+            ProxyConfig cfg = new ProxyConfig(port, ks, mitm, rewriteEnabled, rewriteModel, rewriteTemp,
                     gatewayEnabled, proxyMode, clientHost, clientPort);
+
+            // Help-Flag aus Properties lesen
+            String showHelpRaw = props.getProperty(KEY_SHOW_HELP_ON_START);
+            if (showHelpRaw == null) {
+                cfg.setShowHelpOnStart(true);
+            } else {
+                cfg.setShowHelpOnStart(Boolean.parseBoolean(showHelpRaw));
+            }
+            return cfg;
         } catch (IOException | NumberFormatException e) {
             return defaultConfig();
         } finally {
@@ -85,6 +95,7 @@ class ProxyConfigService {
         props.setProperty(KEY_PROXY_MODE, config.getProxyMode().name());
         props.setProperty(KEY_CLIENT_HOST, config.getClientHost());
         props.setProperty(KEY_CLIENT_PORT, String.valueOf(config.getClientPort()));
+        props.setProperty(KEY_SHOW_HELP_ON_START, String.valueOf(config.isShowHelpOnStart()));
 
         File file = getConfigFile();
         FileOutputStream out = null;
@@ -110,9 +121,11 @@ class ProxyConfigService {
     }
 
     private ProxyConfig defaultConfig() {
-        return new ProxyConfig(8888, defaultKeystorePath(), false, false,
+        ProxyConfig cfg = new ProxyConfig(8888, defaultKeystorePath(), false, false,
                 "gpt-5-mini", "1.0", false, ProxyMode.SERVER,
                 "127.0.0.1", 8888);
+        cfg.setShowHelpOnStart(true);
+        return cfg;
     }
 
     private void closeQuietly(Closeable c) {

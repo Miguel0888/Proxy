@@ -54,6 +54,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         initActions();
         initPublicIpStatus();
         loadConfig(); // lädt auch clientHost/clientPort in die Toolbar
+        showHelpDialogIfNeeded();
         updateStatus();
         updateRewriteControls();
 
@@ -867,6 +868,56 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         loadConfig();
         updateStatus();
         updateRewriteControls();
+    }
+
+    private void showHelpDialogIfNeeded() {
+        ProxyConfig cfg = configService.loadConfig();
+        if (!cfg.isShowHelpOnStart()) {
+            return;
+        }
+
+        JCheckBox dontShowAgain = new JCheckBox("Diesen Hinweis nicht mehr anzeigen");
+
+        String message = "<html>" +
+                "<h3>Hinweis zu Server- und Client-Mode</h3>" +
+                "<p><b>Server-Mode:</b><br>" +
+                "- Läuft typischerweise auf der Maschine, auf der IntelliJ läuft.<br>" +
+                "- Startet den lokalen HTTP-Proxy (Port aus der Toolbar).<br>" +
+                "- Wenn in den Einstellungen die Option <b>Gateway</b> aktiviert ist,<br>" +
+                "  wartet der Server zusätzlich auf eine Gateway-Client-Verbindung<br>" +
+                "  und routet Anfragen über diesen Client.</p>" +
+                "<p><b>Client-Mode:</b><br>" +
+                "- Läuft auf der Maschine hinter NAT, die sich zum Server verbindet.<br>" +
+                "- Nimmt in der Toolbar unter <b>Target</b> die öffentliche IP/den Host<br>" +
+                "  und Port des Servers entgegen und baut von dort die Verbindung auf.<br>" +
+                "- Es läuft KEIN lokaler HTTP-Proxy, sondern nur der Gateway-Client.</p>" +
+                "<p><b>Wichtig:</b><br>" +
+                "- Wenn Du Gateway-Routing verwenden willst, aktiviere in den<br>" +
+                "  <b>Einstellungen / Preferences</b> im Server-Mode die Checkbox<br>" +
+                "  <b>Route via gateway</b> (Gateway-Mode).<br>" +
+                "- Im Client-Mode musst Du keinen Gateway-Haken setzen; dort zählt<br>" +
+                "  nur die <b>Target</b>-Einstellung (IP/Port des Servers).</p>" +
+                "</html>";
+
+        JPanel panel = new JPanel(new BorderLayout(0, 8));
+        panel.add(new JLabel(message), BorderLayout.CENTER);
+        panel.add(dontShowAgain, BorderLayout.SOUTH);
+
+        JOptionPane.showMessageDialog(
+                this,
+                panel,
+                "Hinweis zu Server/Client-Mode und Gateway",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+
+        if (dontShowAgain.isSelected()) {
+            cfg.setShowHelpOnStart(false);
+            try {
+                configService.saveConfig(cfg);
+            } catch (IOException ignored) {
+                // wenn Speichern fehlschlägt, erscheint der Dialog eben erneut
+            }
+        }
     }
 
     @Override

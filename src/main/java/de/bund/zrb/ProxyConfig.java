@@ -14,6 +14,8 @@ public class ProxyConfig {
     private final String clientHost;
     private final int clientPort;
 
+    private boolean showHelpOnStart = true;
+
     public ProxyConfig(int port,
                        String keystorePath,
                        boolean mitmEnabled,
@@ -34,6 +36,7 @@ public class ProxyConfig {
         this.proxyMode = proxyMode != null ? proxyMode : ProxyMode.SERVER;
         this.clientHost = (clientHost == null || clientHost.trim().isEmpty()) ? "127.0.0.1" : clientHost.trim();
         this.clientPort = (clientPort <= 0 || clientPort > 65535) ? 8888 : clientPort;
+        this.showHelpOnStart = true;
     }
 
     public int getPort() {
@@ -74,5 +77,13 @@ public class ProxyConfig {
 
     public int getClientPort() {
         return clientPort;
+    }
+
+    public boolean isShowHelpOnStart() {
+        return showHelpOnStart;
+    }
+
+    public void setShowHelpOnStart(boolean showHelpOnStart) {
+        this.showHelpOnStart = showHelpOnStart;
     }
 }
