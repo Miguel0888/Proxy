@@ -10,13 +10,24 @@ public class ProxyConnectionHandler {
     private static final int READ_TIMEOUT_MILLIS = 60000;
 
     private final MitmHandler mitmHandler;
+    private final OutboundConnectionProvider outboundConnectionProvider;
 
     public ProxyConnectionHandler() {
-        this(null);
+        this(null, createDefaultConnectionProvider());
     }
 
     public ProxyConnectionHandler(MitmHandler mitmHandler) {
+        this(mitmHandler, createDefaultConnectionProvider());
+    }
+
+    public ProxyConnectionHandler(MitmHandler mitmHandler,
+                                  OutboundConnectionProvider outboundConnectionProvider) {
         this.mitmHandler = mitmHandler;
+        this.outboundConnectionProvider = outboundConnectionProvider;
+    }
+
+    private static OutboundConnectionProvider createDefaultConnectionProvider() {
+        return new DirectConnectionProvider(CONNECT_TIMEOUT_MILLIS, READ_TIMEOUT_MILLIS);
     }
 
     public void handle(Socket clientSocket) throws IOException {
@@ -88,11 +99,10 @@ public class ProxyConnectionHandler {
         String host = hostPort[0];
         int port = parsePort(hostPort[1], 443);
 
-        Socket remoteSocket = new Socket();
+        Socket remoteSocket = null;
         try {
             System.out.println("[Proxy] Opening tunnel to " + host + ":" + port);
-            remoteSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
-            remoteSocket.setSoTimeout(READ_TIMEOUT_MILLIS);
+            remoteSocket = outboundConnectionProvider.openConnectTunnel(host, port);
 
             OutputStream clientOut = clientSocket.getOutputStream();
             clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes("ISO-8859-1"));
@@ -145,10 +155,9 @@ public class ProxyConnectionHandler {
 
         System.out.println("[Proxy] Forward " + method + " " + host + ":" + port + path);
 
-        Socket remoteSocket = new Socket();
+        Socket remoteSocket = null;
         try {
-            remoteSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
-            remoteSocket.setSoTimeout(READ_TIMEOUT_MILLIS);
+            remoteSocket = outboundConnectionProvider.openHttpConnection(host, port);
 
             OutputStream remoteOut = remoteSocket.getOutputStream();
             InputStream remoteIn = remoteSocket.getInputStream();
@@ -240,5 +249,38 @@ public class ProxyConnectionHandler {
         } catch (IOException ignored) {
             // Ignore
         }
+    }
+}
+
+interface OutboundConnectionProvider {
+
+    Socket openConnectTunnel(String host, int port) throws IOException;
+
+    Socket openHttpConnection(String host, int port) throws IOException;
+}
+
+class DirectConnectionProvider implements OutboundConnectionProvider {
+
+    private final int connectTimeoutMillis;
+    private final int readTimeoutMillis;
+
+    DirectConnectionProvider(int connectTimeoutMillis, int readTimeoutMillis) {
+        this.connectTimeoutMillis = connectTimeoutMillis;
+        this.readTimeoutMillis = readTimeoutMillis;
+    }
+
+    public Socket openConnectTunnel(String host, int port) throws IOException {
+        return openSocket(host, port);
+    }
+
+    public Socket openHttpConnection(String host, int port) throws IOException {
+        return openSocket(host, port);
+    }
+
+    private Socket openSocket(String host, int port) throws IOException {
+        Socket socket = new Socket();
+        socket.connect(new InetSocketAddress(host, port), connectTimeoutMillis);
+        socket.setSoTimeout(readTimeoutMillis);
+        return socket;
     }
 }
