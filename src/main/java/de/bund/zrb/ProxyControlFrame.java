@@ -251,9 +251,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         modeToggleButton.setSelected(clientMode);
         updateModeToggleText();
 
-        // Im Server-Mode zeigt Target-Feld nur den lokalen Port an (kein IP-Relevanz)
-        clientHostField.setText(clientMode ? "127.0.0.1" : "-");
-        clientPortField.setText(String.valueOf(cfg.getPort()));
+        // Client-Host/Port aus Config oder Default 127.0.0.1:8888
+        clientHostField.setText(cfg.getClientHost());
+        clientPortField.setText(String.valueOf(cfg.getClientPort()));
 
         updateRewriteControls();
         updateStartButtonEnabledState();
@@ -270,6 +270,14 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             return false;
         }
 
+        String clientHost = clientHostField.getText().trim();
+        int clientPort;
+        try {
+            clientPort = Integer.parseInt(clientPortField.getText().trim());
+        } catch (NumberFormatException e) {
+            clientPort = 8888;
+        }
+
         ProxyMode mode = modeToggleButton.isSelected() ? ProxyMode.CLIENT : ProxyMode.SERVER;
 
         ProxyConfig cfg = new ProxyConfig(
@@ -280,7 +288,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 rewriteModelField.getText().trim(),
                 rewriteTemperatureField.getText().trim(),
                 gatewayCheckBox.isSelected(),
-                mode
+                mode,
+                clientHost,
+                clientPort
         );
 
         try {

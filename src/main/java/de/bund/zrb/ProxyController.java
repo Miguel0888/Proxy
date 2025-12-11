@@ -102,8 +102,8 @@ class ProxyController {
                 );
             }
 
-            String remoteHost = "127.0.0.1"; // TODO: read from preferences
-            int remotePort = config.getPort() + 1; // mirror SERVER's gatewayPort rule
+            String remoteHost = config.getClientHost();
+            int remotePort = config.getClientPort();
             String gatewayId = "client"; // TODO: configurable id
 
             view.updateGatewayClientStatus("Connecting to " + remoteHost + ":" + remotePort, false);
