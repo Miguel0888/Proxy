@@ -400,6 +400,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         ProxyMode mode = modeToggleButton.isSelected() ? ProxyMode.CLIENT : ProxyMode.SERVER;
 
+        // Load existing config to preserve flags like showHelpOnStart
+        ProxyConfig oldCfg = configService.loadConfig();
+
         ProxyConfig cfg = new ProxyConfig(
                 port,
                 keystoreField.getText().trim(),
@@ -413,6 +416,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 clientPort,
                 gatewayPasskeyField.getText().trim()
         );
+
+        // Preserve "do not show help" flag
+        cfg.setShowHelpOnStart(oldCfg.isShowHelpOnStart());
 
         try {
             configService.saveConfig(cfg);
