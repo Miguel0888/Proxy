@@ -35,6 +35,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private JTextField clientHostField;
     private JTextField clientPortField;
 
+    private JButton publicIpCopyButton;
+
     private final ProxyConfigService configService = new ProxyConfigService();
     private final PublicIpService publicIpService = new PublicIpService();
     private final MitmSetupService mitmSetupService = new MitmSetupService();
@@ -92,6 +94,13 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         clientHostField = new JTextField("127.0.0.1", 12);
         clientPortField = new JTextField("8888", 5);
+
+        publicIpCopyButton = new JButton("\u25A0"); // kleines Quadrat
+        publicIpCopyButton.setMargin(new java.awt.Insets(0, 0, 0, 0));
+        publicIpCopyButton.setFocusable(false);
+        publicIpCopyButton.setBorderPainted(false);
+        publicIpCopyButton.setContentAreaFilled(false);
+        publicIpCopyButton.setToolTipText("Copy public IP to clipboard");
 
         initMenuBar();
         initToolBar();
@@ -156,7 +165,11 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         JPanel statusBar = new JPanel(new BorderLayout(8, 0));
         statusBar.setBorder(new EmptyBorder(4, 0, 0, 0));
-        statusBar.add(publicIpLabel, BorderLayout.WEST);
+        JPanel publicIpPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        publicIpPanel.add(publicIpLabel);
+        publicIpPanel.add(publicIpCopyButton);
+        statusBar.add(publicIpPanel, BorderLayout.WEST);
+
         statusBar.add(statusLabel, BorderLayout.CENTER);
 
         JPanel clientStatusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
@@ -180,6 +193,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         mitmCheckBox.addActionListener(e -> updateRewriteControls());
         rewriteCheckBox.addActionListener(e -> updateRewriteControls());
+        publicIpCopyButton.addActionListener(e -> copyPublicIpToClipboard());
     }
 
     private void initPublicIpStatus() {
@@ -198,6 +212,28 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         }, "public-ip-resolver");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    private void copyPublicIpToClipboard() {
+        String text = publicIpLabel.getText();
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        // Erwartetes Format: "Public IP: <ip>" – wir extrahieren die IP nach dem Doppelpunkt
+        String ip = text;
+        int idx = text.indexOf(':');
+        if (idx >= 0 && idx + 1 < text.length()) {
+            ip = text.substring(idx + 1).trim();
+        }
+        if (ip.isEmpty() || ip.equals("resolving...")) {
+            return;
+        }
+        try {
+            java.awt.datatransfer.StringSelection selection = new java.awt.datatransfer.StringSelection(ip);
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, null);
+        } catch (Exception ignored) {
+            // still fail silently, kein Bestätigungsdialog gewünscht
+        }
     }
 
     private void loadConfig() {
