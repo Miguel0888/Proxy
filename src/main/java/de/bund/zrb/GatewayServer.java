@@ -11,15 +11,20 @@ class GatewayServer {
     private final int port;
     private final GatewaySessionManager sessionManager;
     private final MitmTrafficListener trafficListener;
+    private final ProxyView view;
 
     private volatile boolean running;
     private ServerSocket serverSocket;
     private Thread thread;
 
-    GatewayServer(int port, GatewaySessionManager sessionManager, MitmTrafficListener trafficListener) {
+    GatewayServer(int port,
+                  GatewaySessionManager sessionManager,
+                  MitmTrafficListener trafficListener,
+                  ProxyView view) {
         this.port = port;
         this.sessionManager = sessionManager;
         this.trafficListener = trafficListener;
+        this.view = view;
     }
 
     synchronized void start() throws IOException {
@@ -44,8 +49,13 @@ class GatewayServer {
                 try {
                     serverSocket.close();
                 } catch (IOException ignored) {
+                    // Ignore
                 }
                 log("GatewayServer stopped on port " + port);
+                // When server stops, show no client connected
+                if (view != null) {
+                    view.updateGatewayClientStatus("No client connected", false);
+                }
             }
         }, "gateway-server");
         thread.setDaemon(true);
@@ -54,23 +64,54 @@ class GatewayServer {
 
     private void handleGatewayClient(Socket socket) {
         Thread t = new Thread(() -> {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"))) {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), "UTF-8"))) {
+
                 String hello = reader.readLine();
                 if (hello == null || !hello.startsWith("HELLO ")) {
                     log("Invalid HELLO from " + socket.getRemoteSocketAddress());
-                    socket.close();
+                    try {
+                        socket.close();
+                    } catch (IOException ignored) {
+                        // Ignore
+                    }
                     return;
                 }
+
                 String id = hello.substring("HELLO ".length()).trim();
                 String remote = String.valueOf(socket.getRemoteSocketAddress());
                 log("Gateway client connected: " + remote + " id=" + id);
 
-                SocketGatewaySession session = new SocketGatewaySession(id, remote, socket, sessionManager, trafficListener, reader);
+                if (view != null) {
+                    view.updateGatewayClientStatus(
+                            "Gateway client connected: " + remote + " id=" + id,
+                            true
+                    );
+                }
+
+                SocketGatewaySession session = new SocketGatewaySession(
+                        id,
+                        remote,
+                        socket,
+                        sessionManager,
+                        trafficListener,
+                        reader
+                );
+
                 sessionManager.setActiveSession(session);
-                // Session.run() blocks until connection closes
+
+                // Block until connection closes; afterwards clear state
                 session.run();
+
+                if (view != null) {
+                    view.updateGatewayClientStatus("No client connected", false);
+                }
+
             } catch (IOException e) {
                 log("Gateway client error: " + e.getMessage());
+                if (view != null) {
+                    view.updateGatewayClientStatus("No client connected", false);
+                }
             }
         }, "gateway-client-handler");
         t.setDaemon(true);
@@ -83,6 +124,7 @@ class GatewayServer {
             try {
                 serverSocket.close();
             } catch (IOException ignored) {
+                // Ignore
             }
         }
         if (thread != null) {
