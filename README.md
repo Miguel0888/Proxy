@@ -235,6 +235,11 @@ Die aktuelle Architektur (UI → Proxy-Service → MITM-Handler) ist bewusst so 
 ---
 
 ## Entwicklerinformationen
+### Proxy mit CURL testen
+```
+curl.exe -v --proxy http://192.168.1.123:8888 https://www.google.com
+```
+
 ### Automatische Proxy-Konfiguration per WPAD/PAC-Datei
 Wenn unter Windows ein Setupskript mit URL für das Netzwerk hinterlegt ist, muss das Projekt wie folgt über die PowerShell gebaut werden:
 
