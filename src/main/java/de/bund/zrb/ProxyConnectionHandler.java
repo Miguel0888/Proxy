@@ -31,13 +31,6 @@ public class ProxyConnectionHandler {
     public ProxyConnectionHandler(MitmHandler mitmHandler,
                                   OutboundConnectionProvider outboundConnectionProvider,
                                   GatewaySessionManager gatewaySessionManager,
-                                  String expectedPasskey) {
-        this(mitmHandler, outboundConnectionProvider, gatewaySessionManager, expectedPasskey, null);
-    }
-
-    public ProxyConnectionHandler(MitmHandler mitmHandler,
-                                  OutboundConnectionProvider outboundConnectionProvider,
-                                  GatewaySessionManager gatewaySessionManager,
                                   String expectedPasskey,
                                   ProxyView view) {
         this.mitmHandler = mitmHandler;
@@ -63,7 +56,7 @@ public class ProxyConnectionHandler {
 
             String firstLine = reader.readLine();
             if (firstLine == null || firstLine.isEmpty()) {
-                System.out.println("[Proxy] Empty first line, closing " + clientSocket.getRemoteSocketAddress());
+                System.out.println("[Proxy] Empty first line, close connection");
                 return;
             }
 
@@ -132,12 +125,18 @@ public class ProxyConnectionHandler {
         if (!expectedPasskey.isEmpty()) {
             if (passkey == null || !expectedPasskey.equals(passkey)) {
                 System.out.println("[Proxy] Gateway client rejected: invalid passkey from " + socket.getRemoteSocketAddress());
+                // Verbindung hart schließen, kein OK an den Client
+                closeQuietly(socket);
+                if (view != null) {
+                    view.updateGatewayClientStatus("Gateway HELLO rejected", false);
+                }
                 return;
             }
         }
 
         System.out.println("[Proxy] Gateway client accepted from " + socket.getRemoteSocketAddress());
 
+        // HELLO akzeptiert -> explizit OK an den Client senden
         Writer writer = new OutputStreamWriter(socket.getOutputStream(), "ISO-8859-1");
         writer.write("OK\r\n");
         writer.flush();
@@ -153,10 +152,7 @@ public class ProxyConnectionHandler {
                     view
             );
             gatewaySessionManager.setActiveSession(session);
-
-            // Blockiert, bis die Session beendet ist
             session.run();
-
             gatewaySessionManager.clearActiveSession(session);
         }
     }
