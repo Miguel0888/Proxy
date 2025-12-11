@@ -95,12 +95,17 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         clientHostField = new JTextField("127.0.0.1", 12);
         clientPortField = new JTextField("8888", 5);
 
-        publicIpCopyButton = new JButton("\u25A0"); // kleines Quadrat
+        publicIpCopyButton = new JButton("⧉"); // Copy-Symbol
         publicIpCopyButton.setMargin(new java.awt.Insets(0, 0, 0, 0));
         publicIpCopyButton.setFocusable(false);
         publicIpCopyButton.setBorderPainted(false);
         publicIpCopyButton.setContentAreaFilled(false);
         publicIpCopyButton.setToolTipText("Copy public IP to clipboard");
+        // etwas größer als die Schrift, aber quadratisch
+        Dimension d = new Dimension(18, 18);
+        publicIpCopyButton.setPreferredSize(d);
+        publicIpCopyButton.setMinimumSize(d);
+        publicIpCopyButton.setMaximumSize(d);
 
         initMenuBar();
         initToolBar();
