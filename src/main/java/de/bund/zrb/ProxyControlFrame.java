@@ -312,7 +312,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
     private void blinkComponent(final JComponent comp) {
         final Color original = comp.getForeground();
-        final Color blinkColor = Color.GREEN.darker();
+        final Color blinkColor = Color.WHITE; // neutrales Weiß statt Grün
         comp.setForeground(blinkColor);
         javax.swing.Timer timer = new javax.swing.Timer(200, e -> comp.setForeground(original));
         timer.setRepeats(false);
