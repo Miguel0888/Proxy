@@ -11,9 +11,8 @@ public class ProxyConfig {
     private final boolean gatewayEnabled;
     private final ProxyMode proxyMode;
 
-    // Optionale Felder für Client-Mode-Ziel, aktuell noch nicht verwendet
-    // private final String clientHost;
-    // private final int clientPort;
+    private final String clientHost;
+    private final int clientPort;
 
     public ProxyConfig(int port,
                        String keystorePath,
@@ -22,7 +21,9 @@ public class ProxyConfig {
                        String rewriteModel,
                        String rewriteTemperature,
                        boolean gatewayEnabled,
-                       ProxyMode proxyMode) {
+                       ProxyMode proxyMode,
+                       String clientHost,
+                       int clientPort) {
         this.port = port;
         this.keystorePath = keystorePath;
         this.mitmEnabled = mitmEnabled;
@@ -31,6 +32,8 @@ public class ProxyConfig {
         this.rewriteTemperature = rewriteTemperature;
         this.gatewayEnabled = gatewayEnabled;
         this.proxyMode = proxyMode != null ? proxyMode : ProxyMode.SERVER;
+        this.clientHost = (clientHost == null || clientHost.trim().isEmpty()) ? "127.0.0.1" : clientHost.trim();
+        this.clientPort = (clientPort <= 0 || clientPort > 65535) ? 8888 : clientPort;
     }
 
     public int getPort() {
@@ -63,5 +66,13 @@ public class ProxyConfig {
 
     public ProxyMode getProxyMode() {
         return proxyMode;
+    }
+
+    public String getClientHost() {
+        return clientHost;
+    }
+
+    public int getClientPort() {
+        return clientPort;
     }
 }
