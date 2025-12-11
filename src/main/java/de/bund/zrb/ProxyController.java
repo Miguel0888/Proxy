@@ -54,29 +54,42 @@ class ProxyController {
 
         MitmHandler mitmHandler = createMitmHandler(config, trafficListener);
 
-        OutboundConnectionProvider outboundProvider;
-        if (config.isGatewayEnabled()) {
-            outboundProvider = new GatewayConnectionProvider(gatewaySessionManager);
-            if (trafficListener != null) {
-                trafficListener.onTraffic(
-                        "info",
-                        "Starting proxy in GATEWAY mode (waiting for gateway client connection)",
-                        false
-                );
+        ProxyMode mode = config.getProxyMode();
+        if (mode == ProxyMode.SERVER) {
+            OutboundConnectionProvider outboundProvider;
+            if (config.isGatewayEnabled()) {
+                outboundProvider = new GatewayConnectionProvider(gatewaySessionManager);
+                if (trafficListener != null) {
+                    trafficListener.onTraffic(
+                            "info",
+                            "Starting proxy in SERVER + GATEWAY mode (waiting for gateway client connection)",
+                            false
+                    );
+                }
+            } else {
+                outboundProvider = new DirectConnectionProvider(15000, 60000);
+                if (trafficListener != null) {
+                    trafficListener.onTraffic(
+                            "info",
+                            "Starting proxy in SERVER + DIRECT mode",
+                            false
+                    );
+                }
             }
-        } else {
-            outboundProvider = new DirectConnectionProvider(15000, 60000);
-            if (trafficListener != null) {
-                trafficListener.onTraffic(
-                        "info",
-                        "Starting proxy in DIRECT mode",
-                        false
-                );
-            }
-        }
 
-        server = new LocalProxyServer(port, mitmHandler, outboundProvider);
-        server.start();
+            server = new LocalProxyServer(port, mitmHandler, outboundProvider);
+            server.start();
+        } else {
+            // CLIENT mode: hier später GatewayClient einhängen
+            if (trafficListener != null) {
+                trafficListener.onTraffic(
+                        "info",
+                        "Starting proxy in CLIENT mode (connecting to remote server)",
+                        false
+                );
+            }
+            // TODO: GatewayClient-Start aus Config (Server-Host/Port/GatewayId)
+        }
     }
 
     synchronized void stopProxy() {

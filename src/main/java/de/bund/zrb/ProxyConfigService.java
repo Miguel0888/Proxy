@@ -17,6 +17,7 @@ class ProxyConfigService {
     private static final String KEY_REWRITE_TEMPERATURE = "proxy.model.rewrite.temperature";
 
     private static final String KEY_GATEWAY_ENABLED = "proxy.gateway.enabled";
+    private static final String KEY_PROXY_MODE = "proxy.mode"; // values: SERVER or CLIENT
 
     ProxyConfig loadConfig() {
         File file = getConfigFile();
@@ -44,7 +45,15 @@ class ProxyConfigService {
                     props.getProperty(KEY_GATEWAY_ENABLED, "false")
             );
 
-            return new ProxyConfig(port, ks, mitm, rewriteEnabled, rewriteModel, rewriteTemp, gatewayEnabled);
+            String modeValue = props.getProperty(KEY_PROXY_MODE, "SERVER");
+            ProxyMode proxyMode;
+            try {
+                proxyMode = ProxyMode.valueOf(modeValue.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                proxyMode = ProxyMode.SERVER;
+            }
+
+            return new ProxyConfig(port, ks, mitm, rewriteEnabled, rewriteModel, rewriteTemp, gatewayEnabled, proxyMode);
         } catch (IOException | NumberFormatException e) {
             return defaultConfig();
         } finally {
@@ -66,6 +75,7 @@ class ProxyConfigService {
         props.setProperty(KEY_REWRITE_MODEL, config.getRewriteModel() == null ? "" : config.getRewriteModel());
         props.setProperty(KEY_REWRITE_TEMPERATURE, config.getRewriteTemperature() == null ? "" : config.getRewriteTemperature());
         props.setProperty(KEY_GATEWAY_ENABLED, String.valueOf(config.isGatewayEnabled()));
+        props.setProperty(KEY_PROXY_MODE, config.getProxyMode().name());
 
         File file = getConfigFile();
         FileOutputStream out = null;
@@ -91,7 +101,7 @@ class ProxyConfigService {
     }
 
     private ProxyConfig defaultConfig() {
-        return new ProxyConfig(8888, defaultKeystorePath(), false, false, "gpt-5-mini", "1.0", false);
+        return new ProxyConfig(8888, defaultKeystorePath(), false, false, "gpt-5-mini", "1.0", false, ProxyMode.SERVER);
     }
 
     private void closeQuietly(Closeable c) {

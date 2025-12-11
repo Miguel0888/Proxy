@@ -156,7 +156,8 @@ public class ProxyPreferencesDialog extends JDialog {
                 rewriteEnabled,
                 model,
                 temp,
-                gatewayCheckBox.isSelected()
+                gatewayCheckBox.isSelected(),
+                ProxyMode.SERVER // Dialog bekommt später eigenen Mode-Switch; vorerst SERVER
         );
 
         try {
@@ -184,4 +185,3 @@ public class ProxyPreferencesDialog extends JDialog {
         }
     }
 }
-

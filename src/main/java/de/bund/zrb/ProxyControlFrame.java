@@ -29,6 +29,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private JToolBar toolBar;
 
     private JButton startStopButton;
+    private JToggleButton modeToggleButton;
     private JTextPane trafficPane;
 
     private final ProxyConfigService configService = new ProxyConfigService();
@@ -69,6 +70,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         clientInfoLabel.setHorizontalAlignment(SwingConstants.RIGHT);
 
         startStopButton = new JButton("Start proxy");
+        modeToggleButton = new JToggleButton("Server mode");
+        modeToggleButton.setFocusable(false);
 
         trafficPane = new JTextPane();
         trafficPane.setContentType("text/html");
@@ -115,6 +118,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         toolBar = new JToolBar();
         toolBar.setFloatable(false);
 
+        toolBar.add(modeToggleButton);
+        toolBar.addSeparator();
         toolBar.add(startStopButton);
         // no other buttons in the toolbar; MITM actions are triggered via menu only
     }
@@ -144,6 +149,10 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         setLocationRelativeTo(null);
 
         startStopButton.addActionListener(e -> toggleProxy());
+        modeToggleButton.addActionListener(e -> {
+            updateModeToggleText();
+            saveConfig();
+        });
 
         mitmCheckBox.addActionListener(e -> updateRewriteControls());
         rewriteCheckBox.addActionListener(e -> updateRewriteControls());
@@ -176,6 +185,12 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         rewriteModelField.setText(cfg.getRewriteModel());
         rewriteTemperatureField.setText(cfg.getRewriteTemperature());
         gatewayCheckBox.setSelected(cfg.isGatewayEnabled());
+
+        ProxyMode mode = cfg.getProxyMode();
+        boolean clientMode = (mode == ProxyMode.CLIENT);
+        modeToggleButton.setSelected(clientMode);
+        updateModeToggleText();
+
         updateRewriteControls();
     }
 
@@ -186,6 +201,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             return false;
         }
 
+        ProxyMode mode = modeToggleButton.isSelected() ? ProxyMode.CLIENT : ProxyMode.SERVER;
+
         ProxyConfig cfg = new ProxyConfig(
                 port,
                 keystoreField.getText().trim(),
@@ -193,7 +210,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 rewriteCheckBox.isSelected(),
                 rewriteModelField.getText().trim(),
                 rewriteTemperatureField.getText().trim(),
-                gatewayCheckBox.isSelected()
+                gatewayCheckBox.isSelected(),
+                mode
         );
 
         try {
@@ -224,6 +242,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 return;
             }
 
+            ProxyMode mode = modeToggleButton.isSelected() ? ProxyMode.CLIENT : ProxyMode.SERVER;
+
             ProxyConfig cfg = new ProxyConfig(
                     port,
                     keystoreField.getText().trim(),
@@ -231,7 +251,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                     rewriteCheckBox.isSelected(),
                     rewriteModelField.getText().trim(),
                     rewriteTemperatureField.getText().trim(),
-                    gatewayCheckBox.isSelected()
+                    gatewayCheckBox.isSelected(),
+                    mode
             );
 
             controller.startProxy(cfg, new MitmTrafficListener() {
@@ -247,6 +268,14 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             showError(e.getMessage());
         } catch (IOException e) {
             showError("Failed to start proxy: " + e.getMessage());
+        }
+    }
+
+    private void updateModeToggleText() {
+        if (modeToggleButton.isSelected()) {
+            modeToggleButton.setText("Client mode");
+        } else {
+            modeToggleButton.setText("Server mode");
         }
     }
 

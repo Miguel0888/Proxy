@@ -9,6 +9,7 @@ public class ProxyConfig {
     private final String rewriteModel;
     private final String rewriteTemperature;
     private final boolean gatewayEnabled;
+    private final ProxyMode proxyMode;
 
     public ProxyConfig(int port,
                        String keystorePath,
@@ -16,7 +17,8 @@ public class ProxyConfig {
                        boolean rewriteEnabled,
                        String rewriteModel,
                        String rewriteTemperature,
-                       boolean gatewayEnabled) {
+                       boolean gatewayEnabled,
+                       ProxyMode proxyMode) {
         this.port = port;
         this.keystorePath = keystorePath;
         this.mitmEnabled = mitmEnabled;
@@ -24,6 +26,7 @@ public class ProxyConfig {
         this.rewriteModel = rewriteModel;
         this.rewriteTemperature = rewriteTemperature;
         this.gatewayEnabled = gatewayEnabled;
+        this.proxyMode = proxyMode != null ? proxyMode : ProxyMode.SERVER;
     }
 
     public int getPort() {
@@ -52,5 +55,9 @@ public class ProxyConfig {
 
     public boolean isGatewayEnabled() {
         return gatewayEnabled;
+    }
+
+    public ProxyMode getProxyMode() {
+        return proxyMode;
     }
 }
