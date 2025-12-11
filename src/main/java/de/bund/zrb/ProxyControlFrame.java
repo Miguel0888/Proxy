@@ -53,6 +53,11 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         loadConfig();
         updateStatus();
         updateRewriteControls();
+
+        // Nach Laden der Config: bei Client-Mode automatisch Verbindungsversuche starten
+        if (modeToggleButton.isSelected()) {
+            startClientMode();
+        }
     }
 
     private void initComponents() {
@@ -202,8 +207,12 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         modeToggleButton.setSelected(clientMode);
         updateModeToggleText();
 
-        // Client-Host/Port bleiben vorerst nur in der UI und werden nicht persistiert
+        // Im Server-Mode zeigt Target-Feld nur den lokalen Port an (kein IP-Relevanz)
+        clientHostField.setText(clientMode ? "127.0.0.1" : "-");
+        clientPortField.setText(String.valueOf(cfg.getPort()));
+
         updateRewriteControls();
+        updateStartButtonEnabledState();
     }
 
     private boolean saveConfig() {
@@ -236,9 +245,13 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     }
 
     private void toggleProxy() {
+        // Start/Stop nur im SERVER-Mode erlaubt
+        if (modeToggleButton.isSelected()) {
+            return;
+        }
+
         if (controller.isProxyRunning()) {
             controller.stopProxy();
-            // "Proxy stopped" nicht mehr ins Log schreiben, Statusleiste reicht
             clientInfoLabel.setText("Proxy stopped");
             updateStatus();
         } else {
@@ -283,12 +296,54 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         }
     }
 
+    private void startClientMode() {
+        try {
+            int port = readPortFromField();
+            if (port <= 0) {
+                // Fallback: Port aus Config, falls Feld leer/ungültig
+                ProxyConfig cfg = configService.loadConfig();
+                portField.setText(String.valueOf(cfg.getPort()));
+                port = cfg.getPort();
+            }
+
+            ProxyConfig cfg = new ProxyConfig(
+                    port,
+                    keystoreField.getText().trim(),
+                    mitmCheckBox.isSelected(),
+                    rewriteCheckBox.isSelected(),
+                    rewriteModelField.getText().trim(),
+                    rewriteTemperatureField.getText().trim(),
+                    gatewayCheckBox.isSelected(),
+                    ProxyMode.CLIENT
+            );
+
+            controller.startProxy(cfg, new MitmTrafficListener() {
+                @Override
+                public void onTraffic(String direction, String text, boolean isJson) {
+                    appendTraffic(direction, text, isJson);
+                }
+            });
+
+            clientInfoLabel.setText("Client mode: connecting to server port " + (port + 1));
+            updateStatus();
+        } catch (Exception e) {
+            showError("Failed to start client mode: " + e.getMessage());
+        }
+    }
+
     private void updateModeToggleText() {
         if (modeToggleButton.isSelected()) {
             modeToggleButton.setText("Client mode");
         } else {
             modeToggleButton.setText("Server mode");
         }
+        updateStartButtonEnabledState();
+    }
+
+    private void updateStartButtonEnabledState() {
+        // Start/Stop-Button nur im Server-Mode aktiv
+        boolean serverMode = !modeToggleButton.isSelected();
+        startStopButton.setEnabled(serverMode);
     }
 
     private boolean isProxyRunning() {
