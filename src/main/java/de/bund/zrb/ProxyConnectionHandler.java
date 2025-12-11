@@ -126,7 +126,6 @@ public class ProxyConnectionHandler {
         if (!expectedPasskey.isEmpty()) {
             if (passkey == null || !expectedPasskey.equals(passkey)) {
                 System.out.println("[Proxy] Gateway client rejected: invalid passkey from " + socket.getRemoteSocketAddress());
-                // Verbindung hart schließen, kein OK an den Client
                 closeQuietly(socket);
                 if (view != null) {
                     view.updateGatewayClientStatus("Gateway HELLO rejected", false);
@@ -141,6 +140,7 @@ public class ProxyConnectionHandler {
         Writer writer = new OutputStreamWriter(socket.getOutputStream(), "ISO-8859-1");
         writer.write("OK\r\n");
         writer.flush();
+        System.out.println("[Proxy] Sent OK to gateway client " + socket.getRemoteSocketAddress());
 
         if (gatewaySessionManager != null) {
             SocketGatewaySession session = new SocketGatewaySession(

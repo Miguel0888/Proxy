@@ -48,6 +48,8 @@ class GatewayClient {
                 return;
             }
 
+            log("GatewayClient: HELLO accepted (server replied: " + ack + ")");
+
             if (view != null) {
                 view.updateGatewayClientStatus("Gateway client connected to " + host + ":" + port, true);
             }
