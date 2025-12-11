@@ -11,19 +11,40 @@ public class ProxyConnectionHandler {
 
     private final MitmHandler mitmHandler;
     private final OutboundConnectionProvider outboundConnectionProvider;
+    private final GatewaySessionManager gatewaySessionManager;
+    private final String expectedPasskey;
+    private final ProxyView view;
 
     public ProxyConnectionHandler() {
-        this(null, createDefaultConnectionProvider());
+        this(null, createDefaultConnectionProvider(), null, null, null);
     }
 
     public ProxyConnectionHandler(MitmHandler mitmHandler) {
-        this(mitmHandler, createDefaultConnectionProvider());
+        this(mitmHandler, createDefaultConnectionProvider(), null, null, null);
     }
 
     public ProxyConnectionHandler(MitmHandler mitmHandler,
                                   OutboundConnectionProvider outboundConnectionProvider) {
+        this(mitmHandler, outboundConnectionProvider, null, null, null);
+    }
+
+    public ProxyConnectionHandler(MitmHandler mitmHandler,
+                                  OutboundConnectionProvider outboundConnectionProvider,
+                                  GatewaySessionManager gatewaySessionManager,
+                                  String expectedPasskey) {
+        this(mitmHandler, outboundConnectionProvider, gatewaySessionManager, expectedPasskey, null);
+    }
+
+    public ProxyConnectionHandler(MitmHandler mitmHandler,
+                                  OutboundConnectionProvider outboundConnectionProvider,
+                                  GatewaySessionManager gatewaySessionManager,
+                                  String expectedPasskey,
+                                  ProxyView view) {
         this.mitmHandler = mitmHandler;
         this.outboundConnectionProvider = outboundConnectionProvider;
+        this.gatewaySessionManager = gatewaySessionManager;
+        this.expectedPasskey = expectedPasskey != null ? expectedPasskey.trim() : "";
+        this.view = view;
     }
 
     private static OutboundConnectionProvider createDefaultConnectionProvider() {
@@ -38,11 +59,23 @@ public class ProxyConnectionHandler {
             OutputStream clientOut = clientSocket.getOutputStream();
             BufferedReader reader = new BufferedReader(new InputStreamReader(clientIn, "ISO-8859-1"));
 
-            String requestLine = reader.readLine();
-            if (requestLine == null || requestLine.isEmpty()) {
-                System.out.println("[Proxy] Empty request line, close connection");
+            System.out.println("[Proxy] Handling new connection from " + clientSocket.getRemoteSocketAddress());
+
+            String firstLine = reader.readLine();
+            if (firstLine == null || firstLine.isEmpty()) {
+                System.out.println("[Proxy] Empty first line, closing " + clientSocket.getRemoteSocketAddress());
                 return;
             }
+
+            System.out.println("[Proxy] First line from " + clientSocket.getRemoteSocketAddress() + ": '" + firstLine + "'");
+
+            // Ein-Port-Gateway: HELLO-Handshake direkt hier erkennen
+            if (firstLine.startsWith("HELLO") && gatewaySessionManager != null) {
+                handleGatewayHello(firstLine, clientSocket, reader);
+                return;
+            }
+
+            String requestLine = firstLine;
 
             String headerLine;
             StringBuilder rawHeaders = new StringBuilder();
@@ -88,6 +121,46 @@ public class ProxyConnectionHandler {
         }
     }
 
+    private void handleGatewayHello(String helloLine,
+                                    Socket socket,
+                                    BufferedReader reader) throws IOException {
+        String rest = helloLine.substring("HELLO".length()).trim();
+        String passkey = rest.isEmpty() ? null : rest.split(" ")[0];
+
+        System.out.println("[Proxy] HELLO from " + socket.getRemoteSocketAddress() + " with passkey='" + passkey + "'");
+
+        if (!expectedPasskey.isEmpty()) {
+            if (passkey == null || !expectedPasskey.equals(passkey)) {
+                System.out.println("[Proxy] Gateway client rejected: invalid passkey from " + socket.getRemoteSocketAddress());
+                return;
+            }
+        }
+
+        System.out.println("[Proxy] Gateway client accepted from " + socket.getRemoteSocketAddress());
+
+        Writer writer = new OutputStreamWriter(socket.getOutputStream(), "ISO-8859-1");
+        writer.write("OK\r\n");
+        writer.flush();
+
+        if (gatewaySessionManager != null) {
+            SocketGatewaySession session = new SocketGatewaySession(
+                    "gateway-client",
+                    String.valueOf(socket.getRemoteSocketAddress()),
+                    socket,
+                    gatewaySessionManager,
+                    null,
+                    reader,
+                    view
+            );
+            gatewaySessionManager.setActiveSession(session);
+
+            // Blockiert, bis die Session beendet ist
+            session.run();
+
+            gatewaySessionManager.clearActiveSession(session);
+        }
+    }
+
     private void handleConnect(String target, Socket clientSocket) throws IOException {
         String[] hostPort = target.split(":");
         if (hostPort.length != 2) {
@@ -102,7 +175,18 @@ public class ProxyConnectionHandler {
         Socket remoteSocket = null;
         try {
             System.out.println("[Proxy] Opening tunnel to " + host + ":" + port);
-            remoteSocket = outboundConnectionProvider.openConnectTunnel(host, port);
+            try {
+                remoteSocket = outboundConnectionProvider.openConnectTunnel(host, port);
+            } catch (IOException e) {
+                // Wenn wir im GATEWAY-Modus sind und noch keine Session haben, blocken wir alles
+                String msg = e.getMessage();
+                if (msg != null && msg.contains("No active gateway session available")) {
+                    System.out.println("[Proxy] Reject CONNECT because no active gateway session is available");
+                    writeServiceUnavailable(clientSocket.getOutputStream());
+                    return;
+                }
+                throw e;
+            }
 
             OutputStream clientOut = clientSocket.getOutputStream();
             clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes("ISO-8859-1"));
@@ -157,7 +241,17 @@ public class ProxyConnectionHandler {
 
         Socket remoteSocket = null;
         try {
-            remoteSocket = outboundConnectionProvider.openHttpConnection(host, port);
+            try {
+                remoteSocket = outboundConnectionProvider.openHttpConnection(host, port);
+            } catch (IOException e) {
+                String msg = e.getMessage();
+                if (msg != null && msg.contains("No active gateway session available")) {
+                    System.out.println("[Proxy] Reject HTTP request because no active gateway session is available");
+                    writeServiceUnavailable(clientSocket.getOutputStream());
+                    return;
+                }
+                throw e;
+            }
 
             OutputStream remoteOut = remoteSocket.getOutputStream();
             InputStream remoteIn = remoteSocket.getInputStream();
@@ -236,6 +330,16 @@ public class ProxyConnectionHandler {
 
     private void writeBadRequest(OutputStream out) throws IOException {
         String response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
+        out.write(response.getBytes("ISO-8859-1"));
+        out.flush();
+    }
+
+    private void writeServiceUnavailable(OutputStream out) throws IOException {
+        String body = "No active gateway client connected";
+        String response = "HTTP/1.1 503 Service Unavailable\r\n" +
+                "Content-Type: text/plain; charset=ISO-8859-1\r\n" +
+                "Content-Length: " + body.length() + "\r\n\r\n" +
+                body;
         out.write(response.getBytes("ISO-8859-1"));
         out.flush();
     }

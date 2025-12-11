@@ -14,7 +14,6 @@ class ProxyController {
     private final GatewaySessionManager gatewaySessionManager = new GatewaySessionManager();
 
     private LocalProxyServer server;
-    private GatewayServer gatewayServer;
     private Thread clientThread;
     private volatile boolean clientRunning;
 
@@ -68,18 +67,6 @@ class ProxyController {
                             false
                     );
                 }
-
-                int gatewayPort = port + 1;
-                String passkey = config.getGatewayPasskey();
-                gatewayServer = new GatewayServer(gatewayPort, gatewaySessionManager, trafficListener, view, passkey);
-                gatewayServer.start();
-                if (trafficListener != null) {
-                    trafficListener.onTraffic(
-                            "info",
-                            "GatewayServer listening on port " + gatewayPort,
-                            false
-                    );
-                }
             } else {
                 outboundProvider = new DirectConnectionProvider(15000, 60000);
                 if (trafficListener != null) {
@@ -91,7 +78,10 @@ class ProxyController {
                 }
             }
 
-            server = new LocalProxyServer(port, mitmHandler, outboundProvider);
+            String gatewayPasskey = config.getGatewayPasskey();
+            GatewaySessionManager gsm = config.isGatewayEnabled() ? gatewaySessionManager : null;
+
+            server = new LocalProxyServer(port, mitmHandler, outboundProvider, gsm, gatewayPasskey, view);
             server.start();
         } else {
             // CLIENT mode: connect to remote gateway server in a loop
@@ -154,10 +144,6 @@ class ProxyController {
         if (server != null) {
             server.stop();
             server = null;
-        }
-        if (gatewayServer != null) {
-            gatewayServer.stop();
-            gatewayServer = null;
         }
         clientRunning = false;
         if (clientThread != null) {

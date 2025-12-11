@@ -10,6 +10,8 @@ public class GatewaySessionManager {
      * Set active gateway session.
      */
     public synchronized void setActiveSession(GatewaySession session) {
+        System.out.println("[GatewaySessionManager] setActiveSession: " +
+                (session != null ? session.getId() + " @ " + session.getRemoteAddress() : "null"));
         this.activeSession = session;
     }
 
@@ -18,6 +20,8 @@ public class GatewaySessionManager {
      */
     public synchronized void clearActiveSession(GatewaySession session) {
         if (this.activeSession == session) {
+            System.out.println("[GatewaySessionManager] clearActiveSession: " +
+                    (session != null ? session.getId() + " @ " + session.getRemoteAddress() : "null"));
             this.activeSession = null;
         }
     }

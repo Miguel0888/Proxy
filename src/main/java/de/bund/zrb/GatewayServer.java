@@ -38,7 +38,6 @@ class GatewayServer {
         running = true;
 
         thread = new Thread(() -> {
-            log("GatewayServer listening on port " + port);
             try {
                 while (running) {
                     Socket socket = serverSocket.accept();
@@ -54,7 +53,7 @@ class GatewayServer {
                 } catch (IOException ignored) {
                     // Ignore
                 }
-                log("GatewayServer stopped on port " + port);
+                log("GatewayServer stopped");
                 // When server stops, show no client connected
                 if (view != null) {
                     view.updateGatewayClientStatus("No client connected", false);
@@ -117,7 +116,8 @@ class GatewayServer {
                         socket,
                         sessionManager,
                         trafficListener,
-                        reader
+                        reader,
+                        view
                 );
 
                 sessionManager.setActiveSession(session);

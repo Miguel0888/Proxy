@@ -18,6 +18,7 @@ class SocketGatewaySession implements GatewaySession {
     private final GatewaySessionManager sessionManager;
     private final MitmTrafficListener trafficListener;
     private final BufferedReader reader; // already positioned after HELLO
+    private final ProxyView view; // Server-UI für Statusupdates
 
     private volatile boolean alive = true;
     private volatile boolean busy = false;
@@ -27,13 +28,15 @@ class SocketGatewaySession implements GatewaySession {
                          Socket controlSocket,
                          GatewaySessionManager sessionManager,
                          MitmTrafficListener trafficListener,
-                         BufferedReader reader) {
+                         BufferedReader reader,
+                         ProxyView view) {
         this.id = id;
         this.remoteAddress = remoteAddress;
         this.controlSocket = controlSocket;
         this.sessionManager = sessionManager;
         this.trafficListener = trafficListener;
         this.reader = reader;
+        this.view = view;
     }
 
     @Override
@@ -98,6 +101,10 @@ class SocketGatewaySession implements GatewaySession {
      * is no additional control traffic after CONNECT/OK, so we just wait.
      */
     void run() {
+        // Server-UI: Gateway-Client ist verbunden
+        if (view != null) {
+            view.updateGatewayClientStatus("Gateway client connected: " + remoteAddress, true);
+        }
         try {
             controlSocket.getInputStream().read(); // block until closed
         } catch (IOException ignored) {
@@ -107,6 +114,9 @@ class SocketGatewaySession implements GatewaySession {
             try {
                 controlSocket.close();
             } catch (IOException ignored) {
+            }
+            if (view != null) {
+                view.updateGatewayClientStatus("No client connected", false);
             }
             log("Gateway session closed: " + id + " @ " + remoteAddress);
         }
@@ -120,4 +130,3 @@ class SocketGatewaySession implements GatewaySession {
         }
     }
 }
-
