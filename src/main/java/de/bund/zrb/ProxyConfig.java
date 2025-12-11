@@ -12,10 +12,13 @@ public class ProxyConfig {
     private final ProxyMode proxyMode;
 
     private final String clientHost;
-    private final int clientPort;
+    private int clientPort;
 
-    // Neuer Gateway-Passkey (für Authentifizierung des Gateway-Clients)
-    private final String gatewayPasskey;
+    // Gemeinsamer Gateway-Passkey (Bestand), plus getrennte Felder für Server/Client
+    private String gatewayPasskey;
+    private int serverPort;
+    private String serverGatewayPasskey;
+    private String clientGatewayPasskey;
 
     private boolean showHelpOnStart = true;
 
@@ -66,6 +69,11 @@ public class ProxyConfig {
         this.gatewayPasskey = (gatewayPasskey == null || gatewayPasskey.trim().isEmpty())
                 ? "passkey1234"
                 : gatewayPasskey.trim();
+        // Standard: Server-Port = Proxy-Port
+        this.serverPort = this.port;
+        // Default: Server/Client-Passkeys leiten sich vom gemeinsamen Passkey ab
+        this.serverGatewayPasskey = this.gatewayPasskey;
+        this.clientGatewayPasskey = this.gatewayPasskey;
         this.showHelpOnStart = true;
     }
 
@@ -109,6 +117,17 @@ public class ProxyConfig {
         return clientPort;
     }
 
+    public void setClientPort(String value) {
+        try {
+            int p = Integer.parseInt(value.trim());
+            if (p > 0 && p <= 65535) {
+                this.clientPort = p;
+            }
+        } catch (Exception ignored) {
+            // ungültige Eingabe wird ignoriert
+        }
+    }
+
     public String getGatewayPasskey() {
         return gatewayPasskey;
     }
@@ -119,5 +138,42 @@ public class ProxyConfig {
 
     public void setShowHelpOnStart(boolean showHelpOnStart) {
         this.showHelpOnStart = showHelpOnStart;
+    }
+
+    // --- neue Getter/Setter für Server/Client-spezifische Ports und Passkeys ---
+
+    public int getServerPort() {
+        return serverPort > 0 ? serverPort : port;
+    }
+
+    public void setServerPort(String value) {
+        try {
+            int p = Integer.parseInt(value.trim());
+            if (p > 0 && p <= 65535) {
+                this.serverPort = p;
+            }
+        } catch (Exception ignored) {
+            // ungültige Eingabe wird ignoriert
+        }
+    }
+
+    public String getServerGatewayPasskey() {
+        return (serverGatewayPasskey == null || serverGatewayPasskey.isEmpty())
+                ? gatewayPasskey
+                : serverGatewayPasskey;
+    }
+
+    public void setServerGatewayPasskey(String value) {
+        this.serverGatewayPasskey = value != null ? value.trim() : "";
+    }
+
+    public String getClientGatewayPasskey() {
+        return (clientGatewayPasskey == null || clientGatewayPasskey.isEmpty())
+                ? gatewayPasskey
+                : clientGatewayPasskey;
+    }
+
+    public void setClientGatewayPasskey(String value) {
+        this.clientGatewayPasskey = value != null ? value.trim() : "";
     }
 }

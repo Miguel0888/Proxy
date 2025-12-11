@@ -23,6 +23,11 @@ class ProxyConfigService {
     private static final String KEY_SHOW_HELP_ON_START = "proxy.showHelpOnStart";
     private static final String KEY_GATEWAY_PASSKEY = "proxy.gateway.passkey";
 
+    // neue Keys für getrennte Server/Client-Werte
+    private static final String KEY_SERVER_PORT = "proxy.server.port";
+    private static final String KEY_SERVER_GATEWAY_PASSKEY = "proxy.server.gateway.passkey";
+    private static final String KEY_CLIENT_GATEWAY_PASSKEY = "proxy.client.gateway.passkey";
+
     ProxyConfig loadConfig() {
         File file = getConfigFile();
         if (!file.exists()) {
@@ -66,6 +71,20 @@ class ProxyConfigService {
             ProxyConfig cfg = new ProxyConfig(port, ks, mitm, rewriteEnabled, rewriteModel, rewriteTemp,
                     gatewayEnabled, proxyMode, clientHost, clientPort, gatewayPasskey);
 
+            // neue Server/Client-spezifische Werte aus Properties lesen
+            String serverPortRaw = props.getProperty(KEY_SERVER_PORT);
+            if (serverPortRaw != null) {
+                cfg.setServerPort(serverPortRaw);
+            }
+            String serverGw = props.getProperty(KEY_SERVER_GATEWAY_PASSKEY);
+            if (serverGw != null) {
+                cfg.setServerGatewayPasskey(serverGw);
+            }
+            String clientGw = props.getProperty(KEY_CLIENT_GATEWAY_PASSKEY);
+            if (clientGw != null) {
+                cfg.setClientGatewayPasskey(clientGw);
+            }
+
             // Help-Flag aus Properties lesen
             String showHelpRaw = props.getProperty(KEY_SHOW_HELP_ON_START);
             if (showHelpRaw == null) {
@@ -100,6 +119,11 @@ class ProxyConfigService {
         props.setProperty(KEY_CLIENT_PORT, String.valueOf(config.getClientPort()));
         props.setProperty(KEY_SHOW_HELP_ON_START, String.valueOf(config.isShowHelpOnStart()));
         props.setProperty(KEY_GATEWAY_PASSKEY, config.getGatewayPasskey());
+
+        // neue Server/Client-spezifische Werte speichern
+        props.setProperty(KEY_SERVER_PORT, String.valueOf(config.getServerPort()));
+        props.setProperty(KEY_SERVER_GATEWAY_PASSKEY, config.getServerGatewayPasskey());
+        props.setProperty(KEY_CLIENT_GATEWAY_PASSKEY, config.getClientGatewayPasskey());
 
         File file = getConfigFile();
         FileOutputStream out = null;
