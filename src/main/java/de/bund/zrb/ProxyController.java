@@ -48,13 +48,14 @@ class ProxyController {
             throw new IllegalArgumentException("config must not be null.");
         }
 
-        int port = config.getPort();
-        if (port <= 0 || port > 65535) {
-            throw new IllegalArgumentException("Port must be between 1 and 65535.");
-        }
-
         ProxyMode mode = config.getProxyMode();
         if (mode == ProxyMode.SERVER) {
+            // SERVER: Port und Passkey aus View (Server-spezifisch) holen
+            int port = view.getServerPort();
+            if (port <= 0 || port > 65535) {
+                throw new IllegalArgumentException("Port must be between 1 and 65535.");
+            }
+
             MitmHandler mitmHandler = createMitmHandler(config, trafficListener);
 
             OutboundConnectionProvider outboundProvider;
@@ -78,7 +79,7 @@ class ProxyController {
                 }
             }
 
-            String gatewayPasskey = config.getGatewayPasskey();
+            String gatewayPasskey = view.getServerGatewayPasskey();
             GatewaySessionManager gsm = config.isGatewayEnabled() ? gatewaySessionManager : null;
 
             server = new LocalProxyServer(port, mitmHandler, outboundProvider, gsm, gatewayPasskey, view);

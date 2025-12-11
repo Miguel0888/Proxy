@@ -28,7 +28,7 @@ class GatewayClient {
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
             Writer writer = new OutputStreamWriter(socket.getOutputStream(), "UTF-8");
 
-            String passkey = (view != null) ? view.getGatewayPasskey() : "";
+            String passkey = (view != null) ? view.getClientGatewayPasskey() : "";
             passkey = passkey != null ? passkey.trim() : "";
 
             // HELLO nur mit Passkey (keine ID mehr)

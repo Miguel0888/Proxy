@@ -215,16 +215,34 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         modeToggleButton.addActionListener(e -> {
             boolean nowClientMode = modeToggleButton.isSelected();
             updateModeToggleText();
-            saveConfig();
+
+            // Laufende Instanz stoppen
+            controller.stopProxy();
+            updateGatewayClientStatus("No client connected", false);
+            updateStatus();
+
+            // Aktuelle Config laden
+            ProxyConfig cfg = configService.loadConfig();
 
             if (nowClientMode) {
-                // Wechsel in Client-Mode: immer mit AKTUELLEN Toolbar-Werten neu starten
-                startClientMode();
+                // Letzte Werte speichern:
+                cfg.setClientPort(clientPortField.getText());
+                cfg.setClientGatewayPasskey(gatewayPasskeyField.getText());
+                // CLIENT-Mode: Toolbar mit Client-Werten aus Config befüllen
+                clientHostField.setText(cfg.getClientHost());
+                clientPortField.setText(String.valueOf(cfg.getClientPort()));
+                gatewayPasskeyField.setText(cfg.getClientGatewayPasskey());
+                System.out.println("CLIENT");
             } else {
-                // Wechsel zurück in Server-Mode: Client stoppen, Status zurücksetzen
-                controller.stopProxy();
-                updateGatewayClientStatus("No client connected", false);
-                updateStatus();
+                // Letzte Werte speichern:
+                cfg.setServerPort(clientPortField.getText());
+                cfg.setServerGatewayPasskey(gatewayPasskeyField.getText());
+                // SERVER-Mode: Port & Passkey aus Config holen
+                portField.setText(String.valueOf(cfg.getPort()));
+                clientPortField.setText(String.valueOf(cfg.getServerPort()));
+                gatewayPasskeyField.setText(cfg.getServerGatewayPasskey());
+                gatewayCheckBox.setSelected(cfg.isGatewayEnabled());
+                System.out.println("SERVER");
             }
         });
 
@@ -390,7 +408,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             configService.saveConfig(cfg);
             return true;
         } catch (IOException e) {
-            showError("Failed to save config: " + e.getMessage());
+            showError("Failed to save configuration: " + e.getMessage());
             return false;
         }
     }
@@ -412,34 +430,13 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
     private void startProxy() {
         try {
-            int port = readPortFromField();
-            if (port <= 0) {
+            // SERVER-Mode: immer Port & Passkey aus Config verwenden, nicht direkt aus der Toolbar
+            ProxyConfig cfg = configService.loadConfig();
+            int port = cfg.getPort();
+            if (port <= 0 || port > 65535) {
                 showError("Port must be a number between 1 and 65535.");
                 return;
             }
-
-            String clientHost = clientHostField.getText().trim();
-            int clientPort;
-            try {
-                clientPort = Integer.parseInt(clientPortField.getText().trim());
-            } catch (NumberFormatException e) {
-                clientPort = 8888;
-            }
-
-            ProxyMode mode = modeToggleButton.isSelected() ? ProxyMode.CLIENT : ProxyMode.SERVER;
-
-            ProxyConfig cfg = new ProxyConfig(
-                    port,
-                    keystoreField.getText().trim(),
-                    mitmCheckBox.isSelected(),
-                    rewriteCheckBox.isSelected(),
-                    rewriteModelField.getText().trim(),
-                    rewriteTemperatureField.getText().trim(),
-                    gatewayCheckBox.isSelected(),
-                    mode,
-                    clientHost,
-                    clientPort
-            );
 
             controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
 
@@ -454,6 +451,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
     private void startClientMode() {
         try {
+            // CLIENT-Mode: ausschließlich Toolbar-Werte verwenden (alter Pfad)
             int port = readPortFromField();
             if (port <= 0) {
                 showError("Port must be a number between 1 and 65535.");
@@ -469,7 +467,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 return;
             }
             if (clientPort <= 0 || clientPort > 65535) {
-                showError("Client port must be a number between 1 and 65535.");
+                showError("Client port must be a number zwischen 1 und 65535.");
                 return;
             }
 
@@ -483,10 +481,11 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                     gatewayCheckBox.isSelected(),
                     ProxyMode.CLIENT,
                     clientHost,
-                    clientPort
+                    clientPort,
+                    gatewayPasskeyField.getText().trim()
             );
 
-            controller.stopProxy(); // sicherstellen, dass alter Client/Server weg ist
+            controller.stopProxy();
             controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
 
             updateGatewayClientStatus("Connecting to " + clientHost + ":" + clientPort, false);
@@ -929,15 +928,18 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         }
     }
 
+    @Override
+    public int getServerPort() {
+        try {
+            return Integer.parseInt(portField.getText().trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                ProxyControlFrame frame = new ProxyControlFrame();
-                frame.setVisible(true);
-            }
-        });
+    @Override
+    public String getServerGatewayPasskey() {
+        return gatewayPasskeyField != null ? gatewayPasskeyField.getText().trim() : "passkey1234";
     }
 
     @Override
@@ -955,7 +957,17 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     }
 
     @Override
-    public String getGatewayPasskey() {
+    public String getClientGatewayPasskey() {
         return gatewayPasskeyField != null ? gatewayPasskeyField.getText().trim() : "passkey1234";
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                ProxyControlFrame frame = new ProxyControlFrame();
+                frame.setVisible(true);
+            }
+        });
     }
 }
