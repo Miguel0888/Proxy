@@ -7,15 +7,29 @@ import java.net.Socket;
 public class LocalProxyServer {
 
     private final int listenPort;
-    private final ProxyConnectionHandler connectionHandler;
+    private final MitmHandler mitmHandler;
+    private final OutboundConnectionProvider outboundConnectionProvider;
 
     private volatile boolean running;
     private ServerSocket serverSocket;
     private Thread acceptThread;
 
     public LocalProxyServer(int listenPort, MitmHandler mitmHandler) {
+        this(listenPort, mitmHandler, new DirectConnectionProvider(15000, 60000));
+    }
+
+    public LocalProxyServer(int listenPort,
+                            MitmHandler mitmHandler,
+                            OutboundConnectionProvider outboundConnectionProvider) {
+        if (listenPort <= 0 || listenPort > 65535) {
+            throw new IllegalArgumentException("listenPort must be between 1 and 65535");
+        }
+        if (outboundConnectionProvider == null) {
+            throw new IllegalArgumentException("outboundConnectionProvider must not be null");
+        }
         this.listenPort = listenPort;
-        this.connectionHandler = new ProxyConnectionHandler(mitmHandler);
+        this.mitmHandler = mitmHandler;
+        this.outboundConnectionProvider = outboundConnectionProvider;
     }
 
     public synchronized void start() throws IOException {
@@ -72,9 +86,17 @@ public class LocalProxyServer {
     }
 
     private void handleClientAsync(final Socket clientSocket) {
-        Thread t = new Thread(new ClientConnectionTask(clientSocket, connectionHandler), "proxy-client");
+        Thread t = new Thread(
+                new ClientConnectionTask(clientSocket, createConnectionHandler()),
+                "proxy-client"
+        );
         t.setDaemon(true);
         t.start();
+    }
+
+    private ProxyConnectionHandler createConnectionHandler() {
+        // Use refactored ProxyConnectionHandler with OutboundConnectionProvider
+        return new ProxyConnectionHandler(mitmHandler, outboundConnectionProvider);
     }
 
     private void closeServerSocket() {
