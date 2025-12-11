@@ -7,48 +7,21 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.FlowLayout;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.Insets;
 import java.io.*;
-import java.util.Collections;
 
 public class ProxyControlFrame extends JFrame implements ProxyView {
-
-    private static final String CONFIG_DIR = ".proxy";
-    private static final String CONFIG_FILE = "proxy.properties";
-
-    private static final String KEY_PORT = "proxy.port";
-    private static final String KEY_KEYSTORE_PATH = "proxy.keystore.path";
-    private static final String KEY_MITM_ENABLED = "proxy.mitm.enabled";
-
-    private static final String KEY_REWRITE_ENABLED = "proxy.model.rewrite.enabled";
-    private static final String KEY_REWRITE_MODEL = "proxy.model.rewrite.name";
-    private static final String KEY_REWRITE_TEMPERATURE = "proxy.model.rewrite.temperature";
-
-    private static final String KEY_GATEWAY_ENABLED = "proxy.gateway.enabled";
-
-    // Resources inside the JAR (place scripts under src/main/resources/ps)
-    private static final String RESOURCE_CREATE_CA = "/ps/create-ca.ps1";
-    private static final String RESOURCE_OPENAI_CERT = "/ps/create-openai-cert.ps1";
-
-    // Expected CA filename created by your scripts in ~/.proxy
-    private static final String CA_CERT_FILE_NAME = "myproxy-ca.crt";
 
     private JTextField portField;
     private JTextField keystoreField;
     private JCheckBox mitmCheckBox;
-
     private JCheckBox gatewayCheckBox;
 
-    // Rewrite config UI
+    // Rewrite config (nur intern, UI-Einstellungen kommen aus dem Preferences-Dialog)
     private JCheckBox rewriteCheckBox;
     private JTextField rewriteModelField;
     private JTextField rewriteTemperatureField;
 
     private JLabel statusLabel;
-    private JLabel urlLabel;
     private JLabel publicIpLabel;
     private JLabel clientInfoLabel;
 
@@ -56,9 +29,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private JToolBar toolBar;
 
     private JButton startStopButton;
-    private JButton applyButton;
-    private JButton setupCertButton;
-    private JButton installCaButton;
     private JTextPane trafficPane;
 
     private final ProxyConfigService configService = new ProxyConfigService();
@@ -85,10 +55,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         portField = new JTextField(6);
         keystoreField = new JTextField(30);
         mitmCheckBox = new JCheckBox("Enable MITM for api.openai.com");
-
         gatewayCheckBox = new JCheckBox("Route via gateway");
 
-        // Default rewrite: disabled, but sensible vorbelegung
         rewriteCheckBox = new JCheckBox("Rewrite model/temperature for /v1/chat/completions");
         rewriteModelField = new JTextField("gpt-5-mini", 16);
         rewriteTemperatureField = new JTextField("1.0", 4);
@@ -96,16 +64,11 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         statusLabel = new JLabel("Status: stopped");
         statusLabel.setForeground(Color.RED);
 
-        urlLabel = new JLabel("Use as HTTP proxy: 127.0.0.1:<port>");
-
         publicIpLabel = new JLabel("Public IP: resolving...");
         clientInfoLabel = new JLabel("No client connected");
         clientInfoLabel.setHorizontalAlignment(SwingConstants.RIGHT);
 
         startStopButton = new JButton("Start proxy");
-        applyButton = new JButton("Apply settings");
-        setupCertButton = new JButton("Generate MITM keystore");
-        installCaButton = new JButton("Install CA into system trust store");
 
         trafficPane = new JTextPane();
         trafficPane.setContentType("text/html");
@@ -128,11 +91,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         exitItem.addActionListener(e -> dispose());
         fileMenu.add(exitItem);
 
-        JMenu settingsMenu = new JMenu("Settings");
-        JMenuItem applySettingsItem = new JMenuItem("Apply settings");
-        applySettingsItem.addActionListener(e -> applySettings());
-        settingsMenu.add(applySettingsItem);
-
         JMenu mitmMenu = new JMenu("MITM");
         JMenuItem generateKeystoreItem = new JMenuItem("Generate MITM keystore");
         generateKeystoreItem.addActionListener(e -> runCertSetup());
@@ -147,7 +105,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         proxyMenu.add(startStopItem);
 
         menuBar.add(fileMenu);
-        menuBar.add(settingsMenu);
         menuBar.add(mitmMenu);
         menuBar.add(proxyMenu);
 
@@ -159,10 +116,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         toolBar.setFloatable(false);
 
         toolBar.add(startStopButton);
-        toolBar.add(applyButton);
-        toolBar.addSeparator();
-        toolBar.add(setupCertButton);
-        toolBar.add(installCaButton);
+        // no other buttons in the toolbar; MITM actions are triggered via menu only
     }
 
     private void layoutComponents() {
@@ -172,46 +126,14 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         JPanel north = new JPanel(new BorderLayout());
         north.add(toolBar, BorderLayout.NORTH);
-
-        // ein kompakter Statusbereich anstelle der kompletten Settings-Grid direkt im Frame
-        JPanel statusPanel = new JPanel(new GridBagLayout());
-        GridBagConstraints gc = new GridBagConstraints();
-        gc.insets = new Insets(4, 4, 4, 4);
-        gc.anchor = GridBagConstraints.WEST;
-        gc.fill = GridBagConstraints.HORIZONTAL;
-
-        int row = 0;
-        gc.gridx = 0;
-        gc.gridy = row;
-        gc.gridwidth = 1;
-        statusPanel.add(new JLabel("Port:"), gc);
-
-        gc.gridx = 1;
-        statusPanel.add(portField, gc);
-
-        gc.gridx = 2;
-        statusPanel.add(gatewayCheckBox, gc);
-
-        row++;
-        gc.gridx = 0;
-        gc.gridy = row;
-        gc.gridwidth = 3;
-        statusPanel.add(statusLabel, gc);
-
-        row++;
-        gc.gridx = 0;
-        gc.gridy = row;
-        gc.gridwidth = 3;
-        statusPanel.add(urlLabel, gc);
-
-        north.add(statusPanel, BorderLayout.CENTER);
-
+        // kein eigener Settings-/Status-Grid mehr im oberen Panel
         content.add(north, BorderLayout.NORTH);
         content.add(new JScrollPane(trafficPane), BorderLayout.CENTER);
 
         JPanel statusBar = new JPanel(new BorderLayout(8, 0));
         statusBar.setBorder(new EmptyBorder(4, 0, 0, 0));
         statusBar.add(publicIpLabel, BorderLayout.WEST);
+        statusBar.add(statusLabel, BorderLayout.CENTER); // Status in die Mitte der Statusleiste
         statusBar.add(clientInfoLabel, BorderLayout.EAST);
         content.add(statusBar, BorderLayout.SOUTH);
     }
@@ -222,9 +144,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         setLocationRelativeTo(null);
 
         startStopButton.addActionListener(e -> toggleProxy());
-        applyButton.addActionListener(e -> applySettings());
-        setupCertButton.addActionListener(e -> runCertSetup());
-        installCaButton.addActionListener(e -> runInstallCa());
 
         mitmCheckBox.addActionListener(e -> updateRewriteControls());
         rewriteCheckBox.addActionListener(e -> updateRewriteControls());
@@ -289,7 +208,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private void toggleProxy() {
         if (controller.isProxyRunning()) {
             controller.stopProxy();
-            appendTraffic("info", "Proxy stopped", false);
+            // "Proxy stopped" nicht mehr ins Log schreiben, Statusleiste reicht
             clientInfoLabel.setText("Proxy stopped");
             updateStatus();
         } else {
@@ -337,21 +256,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
     private void stopProxy() {
         controller.stopProxy();
-        appendTraffic("info", "Proxy stopped", false);
+        // Kein zusätzlicher Logeintrag mehr
         clientInfoLabel.setText("Proxy stopped");
         updateStatus();
-    }
-
-    private void applySettings() {
-        if (!saveConfig()) {
-            return;
-        }
-        if (isProxyRunning()) {
-            stopProxy();
-            startProxy();
-        } else {
-            updateStatus();
-        }
     }
 
     private void updateStatus() {
@@ -367,13 +274,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                     statusLabel.setForeground(Color.RED);
                     startStopButton.setText("Start proxy");
                 }
-
-                int port = readPortFromField();
-                if (port > 0) {
-                    urlLabel.setText("Use as HTTP proxy: 127.0.0.1:" + port);
-                } else {
-                    urlLabel.setText("Use as HTTP proxy: 127.0.0.1:<port>");
-                }
+                // Text "Use as HTTP proxy: ..." wird nicht mehr angezeigt
             }
         });
     }
