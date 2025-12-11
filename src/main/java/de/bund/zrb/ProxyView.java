@@ -9,4 +9,9 @@ public interface ProxyView {
 
     // Aktueller Ziel-Port aus der UI (Toolbar)
     int getClientTargetPort();
+
+    // Gateway-Passkey aus der UI (Toolbar)
+    default String getGatewayPasskey() {
+        return "passkey1234";
+    }
 }

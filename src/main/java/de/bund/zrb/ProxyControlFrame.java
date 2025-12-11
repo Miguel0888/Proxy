@@ -35,6 +35,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private JTextField clientHostField;
     private JTextField clientPortField;
 
+    // Neuer Gateway-Passkey (für Server/Client-Gateway-Handshake)
+    private JTextField gatewayPasskeyField;
+
     private JButton publicIpCopyButton;
     private JButton clientHostPasteButton;
 
@@ -109,6 +112,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         clientHostField = new JTextField("127.0.0.1", 12);
         clientPortField = new JTextField("8888", 5);
 
+        gatewayPasskeyField = new JTextField("passkey1234", 10);
+
         clientHostPasteButton = new JButton("⧉");
         clientHostPasteButton.setMargin(new java.awt.Insets(0, 0, 0, 0));
         clientHostPasteButton.setFocusable(false);
@@ -167,6 +172,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         toolBar.add(clientHostPasteButton);
         toolBar.add(new JLabel(":"));
         toolBar.add(clientPortField);
+        toolBar.add(new JLabel("  Passkey:"));
+        toolBar.add(gatewayPasskeyField);
         toolBar.addSeparator();
         toolBar.add(startStopButton);
         // no other buttons in the toolbar; MITM actions are triggered via menu only
@@ -338,6 +345,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         // Host/Port EINMALIG aus Config in Toolbar laden
         clientHostField.setText(cfg.getClientHost());
         clientPortField.setText(String.valueOf(cfg.getClientPort()));
+        gatewayPasskeyField.setText(cfg.getGatewayPasskey());
 
         updateRewriteControls();
         updateStartButtonEnabledState();
@@ -374,7 +382,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 gatewayCheckBox.isSelected(),
                 mode,
                 clientHost,
-                clientPort
+                clientPort,
+                gatewayPasskeyField.getText().trim()
         );
 
         try {
@@ -920,6 +929,17 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         }
     }
 
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                ProxyControlFrame frame = new ProxyControlFrame();
+                frame.setVisible(true);
+            }
+        });
+    }
+
     @Override
     public String getClientTargetHost() {
         return clientHostField.getText().trim();
@@ -934,13 +954,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         }
     }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                ProxyControlFrame frame = new ProxyControlFrame();
-                frame.setVisible(true);
-            }
-        });
+    @Override
+    public String getGatewayPasskey() {
+        return gatewayPasskeyField != null ? gatewayPasskeyField.getText().trim() : "passkey1234";
     }
 }

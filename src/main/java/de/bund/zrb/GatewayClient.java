@@ -33,8 +33,14 @@ class GatewayClient {
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
             Writer writer = new OutputStreamWriter(socket.getOutputStream(), "UTF-8");
 
-            // Vorerst: HELLO <id> (Passkey-Integration folgt über Konfiguration)
-            writer.write("HELLO " + gatewayId + "\r\n");
+            String passkey = (view != null) ? view.getGatewayPasskey() : "";
+            passkey = passkey != null ? passkey.trim() : "";
+
+            if (passkey.isEmpty()) {
+                writer.write("HELLO " + gatewayId + "\r\n");
+            } else {
+                writer.write("HELLO " + gatewayId + " " + passkey + "\r\n");
+            }
             writer.flush();
 
             while (true) {
