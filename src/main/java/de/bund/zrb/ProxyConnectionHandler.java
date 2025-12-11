@@ -121,6 +121,7 @@ public class ProxyConnectionHandler {
         String passkey = rest.isEmpty() ? null : rest.split(" ")[0];
 
         System.out.println("[Proxy] HELLO from " + socket.getRemoteSocketAddress() + " with passkey='" + passkey + "'");
+        System.out.println("[Proxy] Expected passkey on server is '" + expectedPasskey + "'");
 
         if (!expectedPasskey.isEmpty()) {
             if (passkey == null || !expectedPasskey.equals(passkey)) {
