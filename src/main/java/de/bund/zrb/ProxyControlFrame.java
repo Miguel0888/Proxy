@@ -12,6 +12,9 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.URL;
 import java.util.Collections;
 import java.util.Properties;
 
@@ -28,6 +31,8 @@ public class ProxyControlFrame extends JFrame {
     private static final String KEY_REWRITE_MODEL = "proxy.model.rewrite.name";
     private static final String KEY_REWRITE_TEMPERATURE = "proxy.model.rewrite.temperature";
 
+    private static final String KEY_GATEWAY_ENABLED = "proxy.gateway.enabled";
+
     // Resources inside the JAR (place scripts under src/main/resources/ps)
     private static final String RESOURCE_CREATE_CA = "/ps/create-ca.ps1";
     private static final String RESOURCE_OPENAI_CERT = "/ps/create-openai-cert.ps1";
@@ -39,6 +44,8 @@ public class ProxyControlFrame extends JFrame {
     private JTextField keystoreField;
     private JCheckBox mitmCheckBox;
 
+    private JCheckBox gatewayCheckBox;
+
     // Rewrite config UI
     private JCheckBox rewriteCheckBox;
     private JTextField rewriteModelField;
@@ -46,6 +53,9 @@ public class ProxyControlFrame extends JFrame {
 
     private JLabel statusLabel;
     private JLabel urlLabel;
+    private JLabel publicIpLabel;
+    private JLabel clientInfoLabel;
+
     private JButton startStopButton;
     private JButton applyButton;
     private JButton setupCertButton;
@@ -61,6 +71,7 @@ public class ProxyControlFrame extends JFrame {
         initComponents();
         layoutComponents();
         initActions();
+        initPublicIpStatus();
         loadConfig();
         updateStatus();
         updateRewriteControls();
@@ -71,6 +82,8 @@ public class ProxyControlFrame extends JFrame {
         keystoreField = new JTextField(30);
         mitmCheckBox = new JCheckBox("Enable MITM for api.openai.com");
 
+        gatewayCheckBox = new JCheckBox("Route via gateway");
+
         // Default rewrite: disabled, but sensible vorbelegung
         rewriteCheckBox = new JCheckBox("Rewrite model/temperature for /v1/chat/completions");
         rewriteModelField = new JTextField("gpt-5-mini", 16);
@@ -80,6 +93,10 @@ public class ProxyControlFrame extends JFrame {
         statusLabel.setForeground(Color.RED);
 
         urlLabel = new JLabel("Use as HTTP proxy: 127.0.0.1:<port>");
+
+        publicIpLabel = new JLabel("Public IP: resolving...");
+        clientInfoLabel = new JLabel("No client connected");
+        clientInfoLabel.setHorizontalAlignment(SwingConstants.RIGHT);
 
         startStopButton = new JButton("Start proxy");
         applyButton = new JButton("Apply settings");
@@ -113,6 +130,9 @@ public class ProxyControlFrame extends JFrame {
 
         gc.gridx = 1;
         top.add(portField, gc);
+
+        gc.gridx = 2;
+        top.add(gatewayCheckBox, gc);
 
         // Keystore
         row++;
@@ -175,6 +195,12 @@ public class ProxyControlFrame extends JFrame {
         content.add(north, BorderLayout.NORTH);
         content.add(new JScrollPane(trafficPane), BorderLayout.CENTER);
 
+        JPanel statusBar = new JPanel(new BorderLayout(8, 0));
+        statusBar.setBorder(new EmptyBorder(4, 0, 0, 0));
+        statusBar.add(publicIpLabel, BorderLayout.WEST);
+        statusBar.add(clientInfoLabel, BorderLayout.EAST);
+        content.add(statusBar, BorderLayout.SOUTH);
+
         browseButton.addActionListener(e -> chooseKeystore());
     }
 
@@ -190,6 +216,71 @@ public class ProxyControlFrame extends JFrame {
 
         mitmCheckBox.addActionListener(e -> updateRewriteControls());
         rewriteCheckBox.addActionListener(e -> updateRewriteControls());
+    }
+
+    private void initPublicIpStatus() {
+        publicIpLabel.setText("Public IP: resolving...");
+        Thread worker = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String ip = resolvePublicIp();
+                SwingUtilities.invokeLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        publicIpLabel.setText("Public IP: " + ip);
+                    }
+                });
+            }
+        }, "public-ip-resolver");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private String resolvePublicIp() {
+        BufferedReader reader = null;
+        try {
+            URL url = new URL("https://checkip.amazonaws.com/");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(3000);
+            connection.setReadTimeout(3000);
+            connection.setRequestMethod("GET");
+            int code = connection.getResponseCode();
+            if (code == 200) {
+                reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
+                String line = reader.readLine();
+                if (line != null) {
+                    return line.trim();
+                }
+            }
+        } catch (IOException e) {
+            // Ignore and fall back
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException ignored) {
+                    // Ignore
+                }
+            }
+        }
+
+        try {
+            InetAddress local = InetAddress.getLocalHost();
+            return local.getHostAddress();
+        } catch (IOException e) {
+            // Ignore
+        }
+
+        return "unknown";
+    }
+
+    public void updateClientConnectionInfo(final String message) {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                clientInfoLabel.setText(message);
+            }
+        });
     }
 
     private void toggleProxy() {
@@ -291,6 +382,7 @@ public class ProxyControlFrame extends JFrame {
             return;
         }
 
+        clientInfoLabel.setText("No client connected");
         updateStatus();
     }
 
@@ -319,6 +411,7 @@ public class ProxyControlFrame extends JFrame {
             server = null;
         }
         appendTraffic("info", "Proxy stopped", false);
+        clientInfoLabel.setText("Proxy stopped");
         updateStatus();
     }
 
@@ -480,6 +573,7 @@ public class ProxyControlFrame extends JFrame {
             keystoreField.setText(defaultKeystorePath());
             mitmCheckBox.setSelected(false);
             rewriteCheckBox.setSelected(false);
+            gatewayCheckBox.setSelected(false);
             updateRewriteControls();
             return;
         }
@@ -500,6 +594,10 @@ public class ProxyControlFrame extends JFrame {
             String rewriteModel = props.getProperty(KEY_REWRITE_MODEL, "gpt-5-mini");
             String rewriteTemp = props.getProperty(KEY_REWRITE_TEMPERATURE, "1.0");
 
+            boolean gatewayEnabled = Boolean.parseBoolean(
+                    props.getProperty(KEY_GATEWAY_ENABLED, "false")
+            );
+
             portField.setText(port);
             keystoreField.setText(ks);
             mitmCheckBox.setSelected(Boolean.parseBoolean(mitm));
@@ -508,12 +606,15 @@ public class ProxyControlFrame extends JFrame {
             rewriteModelField.setText(rewriteModel);
             rewriteTemperatureField.setText(rewriteTemp);
 
+            gatewayCheckBox.setSelected(gatewayEnabled);
+
         } catch (IOException e) {
             showError("Failed to load config: " + e.getMessage());
             portField.setText("8888");
             keystoreField.setText(defaultKeystorePath());
             mitmCheckBox.setSelected(false);
             rewriteCheckBox.setSelected(false);
+            gatewayCheckBox.setSelected(false);
         } finally {
             closeQuietly(in);
         }
@@ -531,6 +632,7 @@ public class ProxyControlFrame extends JFrame {
         String keystorePath = keystoreField.getText().trim();
         boolean mitmEnabled = mitmCheckBox.isSelected();
         boolean rewriteEnabled = rewriteCheckBox.isSelected();
+        boolean gatewayEnabled = gatewayCheckBox.isSelected();
 
         File dir = getConfigDir();
         if (!dir.exists() && !dir.mkdirs()) {
@@ -545,6 +647,7 @@ public class ProxyControlFrame extends JFrame {
         props.setProperty(KEY_REWRITE_ENABLED, String.valueOf(rewriteEnabled));
         props.setProperty(KEY_REWRITE_MODEL, rewriteModelField.getText().trim());
         props.setProperty(KEY_REWRITE_TEMPERATURE, rewriteTemperatureField.getText().trim());
+        props.setProperty(KEY_GATEWAY_ENABLED, String.valueOf(gatewayEnabled));
 
         File file = getConfigFile();
         FileOutputStream out = null;
