@@ -11,6 +11,10 @@ public class ProxyConfig {
     private final boolean gatewayEnabled;
     private final ProxyMode proxyMode;
 
+    // Optionale Felder für Client-Mode-Ziel, aktuell noch nicht verwendet
+    // private final String clientHost;
+    // private final int clientPort;
+
     public ProxyConfig(int port,
                        String keystorePath,
                        boolean mitmEnabled,

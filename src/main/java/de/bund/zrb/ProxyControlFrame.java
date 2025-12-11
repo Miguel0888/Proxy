@@ -32,6 +32,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private JToggleButton modeToggleButton;
     private JTextPane trafficPane;
 
+    private JTextField clientHostField;
+    private JTextField clientPortField;
+
     private final ProxyConfigService configService = new ProxyConfigService();
     private final PublicIpService publicIpService = new PublicIpService();
     private final MitmSetupService mitmSetupService = new MitmSetupService();
@@ -78,6 +81,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         trafficPane.setEditable(false);
         trafficPane.setText("<html><body style='font-family:monospace;font-size:11px;'></body></html>");
 
+        clientHostField = new JTextField("127.0.0.1", 12);
+        clientPortField = new JTextField("8888", 5);
+
         initMenuBar();
         initToolBar();
     }
@@ -119,6 +125,11 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         toolBar.setFloatable(false);
 
         toolBar.add(modeToggleButton);
+        toolBar.addSeparator();
+        toolBar.add(new JLabel("Target:"));
+        toolBar.add(clientHostField);
+        toolBar.add(new JLabel(":"));
+        toolBar.add(clientPortField);
         toolBar.addSeparator();
         toolBar.add(startStopButton);
         // no other buttons in the toolbar; MITM actions are triggered via menu only
@@ -191,6 +202,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         modeToggleButton.setSelected(clientMode);
         updateModeToggleText();
 
+        // Client-Host/Port bleiben vorerst nur in der UI und werden nicht persistiert
         updateRewriteControls();
     }
 

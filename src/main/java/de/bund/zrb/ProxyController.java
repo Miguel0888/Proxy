@@ -42,7 +42,6 @@ class ProxyController {
         if (server != null && server.isRunning()) {
             return;
         }
-
         if (config == null) {
             throw new IllegalArgumentException("config must not be null.");
         }
@@ -52,10 +51,10 @@ class ProxyController {
             throw new IllegalArgumentException("Port must be between 1 and 65535.");
         }
 
-        MitmHandler mitmHandler = createMitmHandler(config, trafficListener);
-
         ProxyMode mode = config.getProxyMode();
         if (mode == ProxyMode.SERVER) {
+            MitmHandler mitmHandler = createMitmHandler(config, trafficListener);
+
             OutboundConnectionProvider outboundProvider;
             if (config.isGatewayEnabled()) {
                 outboundProvider = new GatewayConnectionProvider(gatewaySessionManager);
@@ -80,15 +79,14 @@ class ProxyController {
             server = new LocalProxyServer(port, mitmHandler, outboundProvider);
             server.start();
         } else {
-            // CLIENT mode: hier später GatewayClient einhängen
+            // CLIENT mode: TODO - später GatewayClient implementieren
             if (trafficListener != null) {
                 trafficListener.onTraffic(
                         "info",
-                        "Starting proxy in CLIENT mode (connecting to remote server)",
+                        "Starting proxy in CLIENT mode (not yet implemented)",
                         false
                 );
             }
-            // TODO: GatewayClient-Start aus Config (Server-Host/Port/GatewayId)
         }
     }
 
