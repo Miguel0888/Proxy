@@ -5,8 +5,7 @@ import com.google.gson.GsonBuilder;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import java.awt.BorderLayout;
-import java.awt.Color;
+import java.awt.*;
 import java.io.*;
 
 public class ProxyControlFrame extends JFrame implements ProxyView {
@@ -24,6 +23,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private JLabel statusLabel;
     private JLabel publicIpLabel;
     private JLabel clientInfoLabel;
+    private JLabel clientStatusDotLabel;
 
     private JMenuBar menuBar;
     private JToolBar toolBar;
@@ -76,6 +76,10 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         publicIpLabel = new JLabel("Public IP: resolving...");
         clientInfoLabel = new JLabel("No client connected");
         clientInfoLabel.setHorizontalAlignment(SwingConstants.RIGHT);
+        clientInfoLabel.setForeground(Color.BLACK);
+
+        clientStatusDotLabel = new JLabel("\u2022");
+        clientStatusDotLabel.setForeground(Color.RED);
 
         startStopButton = new JButton("Start proxy");
         modeToggleButton = new JToggleButton("Server mode");
@@ -147,15 +151,19 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         JPanel north = new JPanel(new BorderLayout());
         north.add(toolBar, BorderLayout.NORTH);
-        // kein eigener Settings-/Status-Grid mehr im oberen Panel
         content.add(north, BorderLayout.NORTH);
         content.add(new JScrollPane(trafficPane), BorderLayout.CENTER);
 
         JPanel statusBar = new JPanel(new BorderLayout(8, 0));
         statusBar.setBorder(new EmptyBorder(4, 0, 0, 0));
         statusBar.add(publicIpLabel, BorderLayout.WEST);
-        statusBar.add(statusLabel, BorderLayout.CENTER); // Status in die Mitte der Statusleiste
-        statusBar.add(clientInfoLabel, BorderLayout.EAST);
+        statusBar.add(statusLabel, BorderLayout.CENTER);
+
+        JPanel clientStatusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        clientStatusPanel.add(clientInfoLabel);
+        clientStatusPanel.add(clientStatusDotLabel);
+        statusBar.add(clientStatusPanel, BorderLayout.EAST);
+
         content.add(statusBar, BorderLayout.SOUTH);
     }
 
@@ -215,7 +223,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         updateStartButtonEnabledState();
 
         clientInfoLabel.setText("No client connected");
-        clientInfoLabel.setForeground(Color.RED);
+        clientInfoLabel.setForeground(Color.BLACK);
+        clientStatusDotLabel.setForeground(Color.RED);
     }
 
     private boolean saveConfig() {
@@ -255,7 +264,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         if (controller.isProxyRunning()) {
             controller.stopProxy();
-            clientInfoLabel.setText("Proxy stopped");
+            updateGatewayClientStatus("No client connected", false);
             updateStatus();
         } else {
             startProxy();
@@ -283,14 +292,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                     mode
             );
 
-            controller.startProxy(cfg, new MitmTrafficListener() {
-                @Override
-                public void onTraffic(String direction, String text, boolean isJson) {
-                    appendTraffic(direction, text, isJson);
-                }
-            });
+            controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
 
-            clientInfoLabel.setText("No client connected");
+            updateGatewayClientStatus("No client connected", false);
             updateStatus();
         } catch (IllegalArgumentException e) {
             showError(e.getMessage());
@@ -322,7 +326,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
             controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
 
-            updateGatewayClientStatus("Client mode: connecting to server port " + (port + 1), false);
+            updateGatewayClientStatus("Connecting to server port " + (port + 1), false);
             updateStatus();
         } catch (Exception e) {
             showError("Failed to start client mode: " + e.getMessage());
@@ -332,12 +336,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     @Override
     public void updateGatewayClientStatus(String text, boolean connected) {
         SwingUtilities.invokeLater(() -> {
-            // Text aktualisieren
-            clientInfoLabel.setText(text + " ");
-            // Farbpunkt (•) anhängen: grün bei connected, rot bei disconnected
-            String dot = connected ? "\u2022" : "\u2022";
-            clientInfoLabel.setForeground(connected ? new Color(0, 160, 0) : Color.RED);
-            clientInfoLabel.setText(text + " " + dot);
+            clientInfoLabel.setText(text);
+            clientInfoLabel.setForeground(Color.BLACK);
+            clientStatusDotLabel.setForeground(connected ? new Color(0, 160, 0) : Color.RED);
         });
     }
 
@@ -362,8 +363,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
     private void stopProxy() {
         controller.stopProxy();
-        // Kein zusätzlicher Logeintrag mehr
-        clientInfoLabel.setText("Proxy stopped");
+        updateGatewayClientStatus("No client connected", false);
         updateStatus();
     }
 
