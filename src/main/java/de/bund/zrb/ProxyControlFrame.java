@@ -192,8 +192,21 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         startStopButton.addActionListener(e -> toggleProxy());
         modeToggleButton.addActionListener(e -> {
+            boolean nowClientMode = modeToggleButton.isSelected();
             updateModeToggleText();
             saveConfig();
+
+            if (nowClientMode) {
+                // Beim Wechsel in den Client-Mode: sicherstellen, dass evtl. laufender Server/Client gestoppt ist
+                controller.stopProxy();
+                // und mit aktuellen Toolbar-Werten einen neuen Client-Loop starten
+                startClientMode();
+            } else {
+                // Beim Wechsel zurück in den Server-Mode: laufenden Client stoppen, Status zurücksetzen
+                controller.stopProxy();
+                updateGatewayClientStatus("No client connected", false);
+                updateStatus();
+            }
         });
 
         mitmCheckBox.addActionListener(e -> updateRewriteControls());
