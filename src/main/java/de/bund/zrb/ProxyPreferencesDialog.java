@@ -111,21 +111,19 @@ public class ProxyPreferencesDialog extends JDialog {
         try {
             port = Integer.parseInt(portField.getText().trim());
         } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Port must be a number between 1 and 65535.", "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Port must be a number zwischen 1 und 65535.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
         if (port <= 0 || port > 65535) {
-            JOptionPane.showMessageDialog(this, "Port must be a number between 1 and 65535.", "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Port must be a number zwischen 1 und 65535.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
         boolean mitmEnabled = mitmCheckBox.isSelected();
         String keystore = keystoreField.getText().trim();
-        if (mitmEnabled) {
-            if (keystore.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Keystore path must not be empty when MITM is enabled.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
+        if (mitmEnabled && keystore.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Keystore path must not be empty when MITM is enabled.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
         }
 
         boolean rewriteEnabled = mitmEnabled && rewriteCheckBox.isSelected();
@@ -149,6 +147,10 @@ public class ProxyPreferencesDialog extends JDialog {
             }
         }
 
+        // Host/Port für Client-Mode kommen hier (noch) nicht aus dem Dialog; Defaults verwenden
+        String clientHost = "127.0.0.1";
+        int clientPort = port > 0 ? port : 8888;
+
         ProxyConfig cfg = new ProxyConfig(
                 port,
                 keystore,
@@ -157,7 +159,9 @@ public class ProxyPreferencesDialog extends JDialog {
                 model,
                 temp,
                 gatewayCheckBox.isSelected(),
-                ProxyMode.SERVER // Dialog bekommt später eigenen Mode-Switch; vorerst SERVER
+                ProxyMode.SERVER, // Dialog selbst schaltet den Mode noch nicht
+                clientHost,
+                clientPort
         );
 
         try {

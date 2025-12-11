@@ -330,6 +330,14 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 return;
             }
 
+            String clientHost = clientHostField.getText().trim();
+            int clientPort;
+            try {
+                clientPort = Integer.parseInt(clientPortField.getText().trim());
+            } catch (NumberFormatException e) {
+                clientPort = 8888;
+            }
+
             ProxyMode mode = modeToggleButton.isSelected() ? ProxyMode.CLIENT : ProxyMode.SERVER;
 
             ProxyConfig cfg = new ProxyConfig(
@@ -340,7 +348,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                     rewriteModelField.getText().trim(),
                     rewriteTemperatureField.getText().trim(),
                     gatewayCheckBox.isSelected(),
-                    mode
+                    mode,
+                    clientHost,
+                    clientPort
             );
 
             controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
@@ -359,9 +369,17 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             int port = readPortFromField();
             if (port <= 0) {
                 // Fallback: Port aus Config, falls Feld leer/ungültig
-                ProxyConfig cfg = configService.loadConfig();
-                portField.setText(String.valueOf(cfg.getPort()));
-                port = cfg.getPort();
+                ProxyConfig cfgFromFile = configService.loadConfig();
+                portField.setText(String.valueOf(cfgFromFile.getPort()));
+                port = cfgFromFile.getPort();
+            }
+
+            String clientHost = clientHostField.getText().trim();
+            int clientPort;
+            try {
+                clientPort = Integer.parseInt(clientPortField.getText().trim());
+            } catch (NumberFormatException e) {
+                clientPort = 8888;
             }
 
             ProxyConfig cfg = new ProxyConfig(
@@ -372,12 +390,14 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                     rewriteModelField.getText().trim(),
                     rewriteTemperatureField.getText().trim(),
                     gatewayCheckBox.isSelected(),
-                    ProxyMode.CLIENT
+                    ProxyMode.CLIENT,
+                    clientHost,
+                    clientPort
             );
 
             controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
 
-            updateGatewayClientStatus("Connecting to server port " + (port + 1), false);
+            updateGatewayClientStatus("Connecting to server port " + clientPort, false);
             updateStatus();
         } catch (Exception e) {
             showError("Failed to start client mode: " + e.getMessage());
