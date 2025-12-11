@@ -102,15 +102,26 @@ class ProxyController {
                 );
             }
 
-            String remoteHost = config.getClientHost();
-            int remotePort = config.getClientPort();
             String gatewayId = "client"; // TODO: configurable id
-
-            view.updateGatewayClientStatus("Connecting to " + remoteHost + ":" + remotePort, false);
 
             clientRunning = true;
             clientThread = new Thread(() -> {
                 while (clientRunning) {
+                    String remoteHost = view.getClientTargetHost();
+                    int remotePort = view.getClientTargetPort();
+                    if (remoteHost == null || remoteHost.isEmpty() || remotePort <= 0 || remotePort > 65535) {
+                        view.updateGatewayClientStatus("Invalid client target (" + remoteHost + ":" + remotePort + ")", false);
+                        try {
+                            Thread.sleep(2000L);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                        continue;
+                    }
+
+                    view.updateGatewayClientStatus("Connecting to " + remoteHost + ":" + remotePort, false);
+
                     try {
                         GatewayClient client = new GatewayClient(remoteHost, remotePort, gatewayId, trafficListener, view);
                         client.run();

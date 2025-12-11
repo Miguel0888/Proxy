@@ -56,7 +56,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         updateStatus();
         updateRewriteControls();
 
-        // Nach Laden der Config: bei Client-Mode automatisch Verbindungsversuche starten
+        // WICHTIG: ab hier sind Host/Port ausschließlich aus der Toolbar maßgeblich
         if (modeToggleButton.isSelected()) {
             startClientMode();
         }
@@ -197,12 +197,10 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             saveConfig();
 
             if (nowClientMode) {
-                // Beim Wechsel in den Client-Mode: sicherstellen, dass evtl. laufender Server/Client gestoppt ist
-                controller.stopProxy();
-                // und mit aktuellen Toolbar-Werten einen neuen Client-Loop starten
+                // Wechsel in Client-Mode: immer mit AKTUELLEN Toolbar-Werten neu starten
                 startClientMode();
             } else {
-                // Beim Wechsel zurück in den Server-Mode: laufenden Client stoppen, Status zurücksetzen
+                // Wechsel zurück in Server-Mode: Client stoppen, Status zurücksetzen
                 controller.stopProxy();
                 updateGatewayClientStatus("No client connected", false);
                 updateStatus();
@@ -285,7 +283,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         modeToggleButton.setSelected(clientMode);
         updateModeToggleText();
 
-        // Host/Port aus letzter gespeicherter Config in Toolbar laden
+        // Host/Port EINMALIG aus Config in Toolbar laden
         clientHostField.setText(cfg.getClientHost());
         clientPortField.setText(String.valueOf(cfg.getClientPort()));
 
@@ -397,10 +395,8 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         try {
             int port = readPortFromField();
             if (port <= 0) {
-                // Fallback: Port aus Config, falls Feld leer/ungültig
-                ProxyConfig cfgFromFile = configService.loadConfig();
-                portField.setText(String.valueOf(cfgFromFile.getPort()));
-                port = cfgFromFile.getPort();
+                showError("Port must be a number between 1 and 65535.");
+                return;
             }
 
             String clientHost = clientHostField.getText().trim();
@@ -408,7 +404,12 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             try {
                 clientPort = Integer.parseInt(clientPortField.getText().trim());
             } catch (NumberFormatException e) {
-                clientPort = 8888;
+                showError("Client port must be a number between 1 and 65535.");
+                return;
+            }
+            if (clientPort <= 0 || clientPort > 65535) {
+                showError("Client port must be a number between 1 and 65535.");
+                return;
             }
 
             ProxyConfig cfg = new ProxyConfig(
@@ -424,9 +425,10 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                     clientPort
             );
 
+            controller.stopProxy(); // sicherstellen, dass alter Client/Server weg ist
             controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
 
-            updateGatewayClientStatus("Connecting to server port " + clientPort, false);
+            updateGatewayClientStatus("Connecting to " + clientHost + ":" + clientPort, false);
             updateStatus();
         } catch (Exception e) {
             showError("Failed to start client mode: " + e.getMessage());
@@ -814,6 +816,20 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         loadConfig();
         updateStatus();
         updateRewriteControls();
+    }
+
+    @Override
+    public String getClientTargetHost() {
+        return clientHostField.getText().trim();
+    }
+
+    @Override
+    public int getClientTargetPort() {
+        try {
+            return Integer.parseInt(clientPortField.getText().trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     public static void main(String[] args) {
