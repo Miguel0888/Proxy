@@ -14,11 +14,13 @@ public class GatewayConnectionProvider implements OutboundConnectionProvider {
         this.sessionManager = sessionManager;
     }
 
+    @Override
     public Socket openConnectTunnel(String host, int port) throws IOException {
         GatewaySession session = sessionManager.getActiveSessionOrThrow();
         return session.openConnectTunnel(host, port);
     }
 
+    @Override
     public Socket openHttpConnection(String host, int port) throws IOException {
         GatewaySession session = sessionManager.getActiveSessionOrThrow();
         return session.openHttpConnection(host, port);

@@ -14,6 +14,9 @@ class ProxyController {
     private final GatewaySessionManager gatewaySessionManager = new GatewaySessionManager();
 
     private LocalProxyServer server;
+    private GatewayServer gatewayServer;
+    private Thread clientThread;
+    private volatile boolean clientRunning;
 
     ProxyController(ProxyView view,
                     ProxyConfigService configService,
@@ -65,6 +68,17 @@ class ProxyController {
                             false
                     );
                 }
+
+                int gatewayPort = port + 1;
+                gatewayServer = new GatewayServer(gatewayPort, gatewaySessionManager, trafficListener);
+                gatewayServer.start();
+                if (trafficListener != null) {
+                    trafficListener.onTraffic(
+                            "info",
+                            "GatewayServer listening on port " + gatewayPort,
+                            false
+                    );
+                }
             } else {
                 outboundProvider = new DirectConnectionProvider(15000, 60000);
                 if (trafficListener != null) {
@@ -79,14 +93,45 @@ class ProxyController {
             server = new LocalProxyServer(port, mitmHandler, outboundProvider);
             server.start();
         } else {
-            // CLIENT mode: TODO - später GatewayClient implementieren
+            // CLIENT mode: connect to remote gateway server in a loop
             if (trafficListener != null) {
                 trafficListener.onTraffic(
                         "info",
-                        "Starting proxy in CLIENT mode (not yet implemented)",
+                        "Starting proxy in CLIENT mode (connecting to remote gateway)",
                         false
                 );
             }
+
+            String remoteHost = "127.0.0.1"; // TODO: read from preferences
+            int remotePort = config.getPort() + 1; // mirror SERVER's gatewayPort rule
+            String gatewayId = "client"; // TODO: configurable id
+
+            clientRunning = true;
+            clientThread = new Thread(() -> {
+                while (clientRunning) {
+                    try {
+                        GatewayClient client = new GatewayClient(remoteHost, remotePort, gatewayId, trafficListener);
+                        client.run();
+                    } catch (IOException e) {
+                        if (trafficListener != null) {
+                            trafficListener.onTraffic("info", "GatewayClient error: " + e.getMessage(), false);
+                        }
+                    }
+
+                    if (!clientRunning) {
+                        break;
+                    }
+
+                    try {
+                        Thread.sleep(5000L);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }, "gateway-client-loop");
+            clientThread.setDaemon(true);
+            clientThread.start();
         }
     }
 
@@ -94,6 +139,20 @@ class ProxyController {
         if (server != null) {
             server.stop();
             server = null;
+        }
+        if (gatewayServer != null) {
+            gatewayServer.stop();
+            gatewayServer = null;
+        }
+        clientRunning = false;
+        if (clientThread != null) {
+            clientThread.interrupt();
+            try {
+                clientThread.join(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            clientThread = null;
         }
     }
 
