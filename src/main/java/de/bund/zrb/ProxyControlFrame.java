@@ -213,6 +213,9 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         updateRewriteControls();
         updateStartButtonEnabledState();
+
+        clientInfoLabel.setText("No client connected");
+        clientInfoLabel.setForeground(Color.RED);
     }
 
     private boolean saveConfig() {
@@ -317,18 +320,25 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                     ProxyMode.CLIENT
             );
 
-            controller.startProxy(cfg, new MitmTrafficListener() {
-                @Override
-                public void onTraffic(String direction, String text, boolean isJson) {
-                    appendTraffic(direction, text, isJson);
-                }
-            });
+            controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
 
-            clientInfoLabel.setText("Client mode: connecting to server port " + (port + 1));
+            updateGatewayClientStatus("Client mode: connecting to server port " + (port + 1), false);
             updateStatus();
         } catch (Exception e) {
             showError("Failed to start client mode: " + e.getMessage());
         }
+    }
+
+    @Override
+    public void updateGatewayClientStatus(String text, boolean connected) {
+        SwingUtilities.invokeLater(() -> {
+            // Text aktualisieren
+            clientInfoLabel.setText(text + " ");
+            // Farbpunkt (•) anhängen: grün bei connected, rot bei disconnected
+            String dot = connected ? "\u2022" : "\u2022";
+            clientInfoLabel.setForeground(connected ? new Color(0, 160, 0) : Color.RED);
+            clientInfoLabel.setText(text + " " + dot);
+        });
     }
 
     private void updateModeToggleText() {

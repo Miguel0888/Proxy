@@ -1,6 +1,6 @@
 package de.bund.zrb;
 
 public interface ProxyView {
-    // Marker-Interface für spätere Erweiterung (Status-/Error-Updates etc.)
+    // Status des Gateway-Clients aktualisieren (z.B. in Statusleiste anzeigen)
+    void updateGatewayClientStatus(String text, boolean connected);
 }
-

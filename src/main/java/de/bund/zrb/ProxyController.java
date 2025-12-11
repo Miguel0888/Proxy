@@ -106,16 +106,19 @@ class ProxyController {
             int remotePort = config.getPort() + 1; // mirror SERVER's gatewayPort rule
             String gatewayId = "client"; // TODO: configurable id
 
+            view.updateGatewayClientStatus("Connecting to " + remoteHost + ":" + remotePort, false);
+
             clientRunning = true;
             clientThread = new Thread(() -> {
                 while (clientRunning) {
                     try {
-                        GatewayClient client = new GatewayClient(remoteHost, remotePort, gatewayId, trafficListener);
+                        GatewayClient client = new GatewayClient(remoteHost, remotePort, gatewayId, trafficListener, view);
                         client.run();
                     } catch (IOException e) {
                         if (trafficListener != null) {
                             trafficListener.onTraffic("info", "GatewayClient error: " + e.getMessage(), false);
                         }
+                        view.updateGatewayClientStatus("Connection failed to " + remoteHost + ":" + remotePort, false);
                     }
 
                     if (!clientRunning) {
@@ -154,6 +157,7 @@ class ProxyController {
             }
             clientThread = null;
         }
+        view.updateGatewayClientStatus("No client connected", false);
     }
 
     synchronized boolean isProxyRunning() {

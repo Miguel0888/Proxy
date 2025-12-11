@@ -10,20 +10,26 @@ class GatewayClient {
     private final int port;
     private final String gatewayId;
     private final MitmTrafficListener trafficListener;
+    private final ProxyView view;
 
     GatewayClient(String host,
                   int port,
                   String gatewayId,
-                  MitmTrafficListener trafficListener) {
+                  MitmTrafficListener trafficListener,
+                  ProxyView view) {
         this.host = host;
         this.port = port;
         this.gatewayId = gatewayId;
         this.trafficListener = trafficListener;
+        this.view = view;
     }
 
     void run() throws IOException {
         log("GatewayClient connecting to " + host + ":" + port + " as " + gatewayId);
         try (Socket socket = new Socket(host, port)) {
+            if (view != null) {
+                view.updateGatewayClientStatus("Gateway client connected: " + host + ":" + port + " id=" + gatewayId, true);
+            }
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
             Writer writer = new OutputStreamWriter(socket.getOutputStream(), "UTF-8");
 
@@ -65,6 +71,10 @@ class GatewayClient {
                 handleConnect(socket, writer, targetHost, targetPort);
                 // For simple protocol: after one tunnel, we stop and let client reconnect
                 break;
+            }
+        } finally {
+            if (view != null) {
+                view.updateGatewayClientStatus("No client connected", false);
             }
         }
     }
