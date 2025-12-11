@@ -12,13 +12,9 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.InetAddress;
-import java.net.URL;
 import java.util.Collections;
-import java.util.Properties;
 
-public class ProxyControlFrame extends JFrame {
+public class ProxyControlFrame extends JFrame implements ProxyView {
 
     private static final String CONFIG_DIR = ".proxy";
     private static final String CONFIG_FILE = "proxy.properties";
@@ -62,7 +58,12 @@ public class ProxyControlFrame extends JFrame {
     private JButton installCaButton;
     private JTextPane trafficPane;
 
-    private LocalProxyServer server;
+    private final ProxyConfigService configService = new ProxyConfigService();
+    private final PublicIpService publicIpService = new PublicIpService();
+    private final MitmSetupService mitmSetupService = new MitmSetupService();
+    private final CaInstallService caInstallService = new CaInstallService();
+    private final ProxyController controller = new ProxyController(this, configService, mitmSetupService, caInstallService);
+
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     public ProxyControlFrame() {
@@ -223,7 +224,7 @@ public class ProxyControlFrame extends JFrame {
         Thread worker = new Thread(new Runnable() {
             @Override
             public void run() {
-                final String ip = resolvePublicIp();
+                final String ip = publicIpService.resolvePublicIp();
                 SwingUtilities.invokeLater(new Runnable() {
                     @Override
                     public void run() {
@@ -236,187 +237,98 @@ public class ProxyControlFrame extends JFrame {
         worker.start();
     }
 
-    private String resolvePublicIp() {
-        BufferedReader reader = null;
-        try {
-            URL url = new URL("https://checkip.amazonaws.com/");
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(3000);
-            connection.setReadTimeout(3000);
-            connection.setRequestMethod("GET");
-            int code = connection.getResponseCode();
-            if (code == 200) {
-                reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
-                String line = reader.readLine();
-                if (line != null) {
-                    return line.trim();
-                }
-            }
-        } catch (IOException e) {
-            // Ignore and fall back
-        } finally {
-            if (reader != null) {
-                try {
-                    reader.close();
-                } catch (IOException ignored) {
-                    // Ignore
-                }
-            }
-        }
-
-        try {
-            InetAddress local = InetAddress.getLocalHost();
-            return local.getHostAddress();
-        } catch (IOException e) {
-            // Ignore
-        }
-
-        return "unknown";
+    private void loadConfig() {
+        ProxyConfig cfg = configService.loadConfig();
+        portField.setText(String.valueOf(cfg.getPort()));
+        keystoreField.setText(cfg.getKeystorePath());
+        mitmCheckBox.setSelected(cfg.isMitmEnabled());
+        rewriteCheckBox.setSelected(cfg.isRewriteEnabled());
+        rewriteModelField.setText(cfg.getRewriteModel());
+        rewriteTemperatureField.setText(cfg.getRewriteTemperature());
+        gatewayCheckBox.setSelected(cfg.isGatewayEnabled());
+        updateRewriteControls();
     }
 
-    public void updateClientConnectionInfo(final String message) {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                clientInfoLabel.setText(message);
-            }
-        });
+    private boolean saveConfig() {
+        int port = readPortFromField();
+        if (port <= 0) {
+            showError("Port must be a number between 1 und 65535.");
+            return false;
+        }
+
+        ProxyConfig cfg = new ProxyConfig(
+                port,
+                keystoreField.getText().trim(),
+                mitmCheckBox.isSelected(),
+                rewriteCheckBox.isSelected(),
+                rewriteModelField.getText().trim(),
+                rewriteTemperatureField.getText().trim(),
+                gatewayCheckBox.isSelected()
+        );
+
+        try {
+            configService.saveConfig(cfg);
+            return true;
+        } catch (IOException e) {
+            showError("Failed to save config: " + e.getMessage());
+            return false;
+        }
     }
 
     private void toggleProxy() {
-        if (isProxyRunning()) {
-            stopProxy();
+        if (controller.isProxyRunning()) {
+            controller.stopProxy();
+            appendTraffic("info", "Proxy stopped", false);
+            clientInfoLabel.setText("Proxy stopped");
+            updateStatus();
         } else {
             startProxy();
         }
     }
 
     private void startProxy() {
-        if (isProxyRunning()) {
-            return;
-        }
-
-        int port = readPortFromField();
-        if (port <= 0) {
-            showError("Port must be a number between 1 and 65535.");
-            return;
-        }
-
-        boolean mitmEnabled = mitmCheckBox.isSelected();
-        String keystorePath = keystoreField.getText().trim();
-
-        MitmHandler mitmHandler = null;
-
-        if (mitmEnabled) {
-            if (keystorePath.isEmpty()) {
-                showError("Keystore path must not be empty when MITM is enabled.");
-                return;
-            }
-            File ksFile = new File(keystorePath);
-            if (!ksFile.exists()) {
-                showError("Keystore not found at: " + ksFile.getAbsolutePath());
+        try {
+            int port = readPortFromField();
+            if (port <= 0) {
+                showError("Port must be a number between 1 and 65535.");
                 return;
             }
 
-            // Read rewrite configuration from UI
-            boolean rewriteEnabled = rewriteCheckBox.isSelected();
-            String rewriteModel = null;
-            Double rewriteTemperature = null;
+            ProxyConfig cfg = new ProxyConfig(
+                    port,
+                    keystoreField.getText().trim(),
+                    mitmCheckBox.isSelected(),
+                    rewriteCheckBox.isSelected(),
+                    rewriteModelField.getText().trim(),
+                    rewriteTemperatureField.getText().trim(),
+                    gatewayCheckBox.isSelected()
+            );
 
-            if (rewriteEnabled) {
-                rewriteModel = rewriteModelField.getText().trim();
-                if (rewriteModel.length() == 0) {
-                    showError("Model name must not be empty when rewrite is enabled.");
-                    return;
-                }
-                String tempText = rewriteTemperatureField.getText().trim();
-                if (tempText.length() == 0) {
-                    showError("Temperature must not be empty when rewrite is enabled.");
-                    return;
-                }
-                try {
-                    rewriteTemperature = Double.valueOf(tempText);
-                } catch (NumberFormatException ex) {
-                    showError("Temperature must be a valid decimal number.");
-                    return;
-                }
-            }
-
-            MitmTrafficListener listener = new MitmTrafficListener() {
+            controller.startProxy(cfg, new MitmTrafficListener() {
                 @Override
                 public void onTraffic(String direction, String text, boolean isJson) {
                     appendTraffic(direction, text, isJson);
                 }
-            };
+            });
 
-            try {
-                // Extend GenericMitmHandler to accept rewrite configuration
-                mitmHandler = new GenericMitmHandler(
-                        ksFile.getAbsolutePath(),
-                        "changeit",
-                        Collections.singleton("api.openai.com"),
-                        listener,
-                        rewriteEnabled,
-                        rewriteModel,
-                        rewriteTemperature
-                );
-
-                appendTraffic("info",
-                        mitmInfoMessage(mitmEnabled, rewriteEnabled, rewriteModel, rewriteTemperature),
-                        false
-                );
-            } catch (IllegalStateException e) {
-                showError("Failed to initialize MITM: " + e.getMessage());
-                return;
-            }
-        } else {
-            appendTraffic("info", "Starting proxy without MITM", false);
-        }
-
-        server = new LocalProxyServer(port, mitmHandler);
-        try {
-            server.start();
+            clientInfoLabel.setText("No client connected");
+            updateStatus();
+        } catch (IllegalArgumentException e) {
+            showError(e.getMessage());
         } catch (IOException e) {
-            server = null;
             showError("Failed to start proxy: " + e.getMessage());
-            return;
         }
-
-        clientInfoLabel.setText("No client connected");
-        updateStatus();
-    }
-
-    private String mitmInfoMessage(boolean mitmEnabled,
-                                   boolean rewriteEnabled,
-                                   String rewriteModel,
-                                   Double rewriteTemperature) {
-        if (!mitmEnabled) {
-            return "MITM disabled.";
-        }
-        if (!rewriteEnabled) {
-            return "MITM enabled for api.openai.com without model/temperature rewrite.";
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("MITM enabled for api.openai.com with rewrite: ");
-        sb.append("model == ").append(rewriteModel);
-        if (rewriteTemperature != null) {
-            sb.append(", temperature -> ").append(rewriteTemperature);
-        }
-        return sb.toString();
-    }
-
-    private void stopProxy() {
-        if (server != null) {
-            server.stop();
-            server = null;
-        }
-        appendTraffic("info", "Proxy stopped", false);
-        clientInfoLabel.setText("Proxy stopped");
-        updateStatus();
     }
 
     private boolean isProxyRunning() {
-        return server != null && server.isRunning();
+        return controller.isProxyRunning();
+    }
+
+    private void stopProxy() {
+        controller.stopProxy();
+        appendTraffic("info", "Proxy stopped", false);
+        clientInfoLabel.setText("Proxy stopped");
+        updateStatus();
     }
 
     private void applySettings() {
@@ -566,148 +478,13 @@ public class ProxyControlFrame extends JFrame {
         }
     }
 
-    private void loadConfig() {
-        File file = getConfigFile();
-        if (!file.exists()) {
-            portField.setText("8888");
-            keystoreField.setText(defaultKeystorePath());
-            mitmCheckBox.setSelected(false);
-            rewriteCheckBox.setSelected(false);
-            gatewayCheckBox.setSelected(false);
-            updateRewriteControls();
-            return;
-        }
-
-        Properties props = new Properties();
-        FileInputStream in = null;
-        try {
-            in = new FileInputStream(file);
-            props.load(in);
-
-            String port = props.getProperty(KEY_PORT, "8888");
-            String ks = props.getProperty(KEY_KEYSTORE_PATH, defaultKeystorePath());
-            String mitm = props.getProperty(KEY_MITM_ENABLED, "false");
-
-            boolean rewriteEnabled = Boolean.parseBoolean(
-                    props.getProperty(KEY_REWRITE_ENABLED, "false")
-            );
-            String rewriteModel = props.getProperty(KEY_REWRITE_MODEL, "gpt-5-mini");
-            String rewriteTemp = props.getProperty(KEY_REWRITE_TEMPERATURE, "1.0");
-
-            boolean gatewayEnabled = Boolean.parseBoolean(
-                    props.getProperty(KEY_GATEWAY_ENABLED, "false")
-            );
-
-            portField.setText(port);
-            keystoreField.setText(ks);
-            mitmCheckBox.setSelected(Boolean.parseBoolean(mitm));
-
-            rewriteCheckBox.setSelected(rewriteEnabled);
-            rewriteModelField.setText(rewriteModel);
-            rewriteTemperatureField.setText(rewriteTemp);
-
-            gatewayCheckBox.setSelected(gatewayEnabled);
-
-        } catch (IOException e) {
-            showError("Failed to load config: " + e.getMessage());
-            portField.setText("8888");
-            keystoreField.setText(defaultKeystorePath());
-            mitmCheckBox.setSelected(false);
-            rewriteCheckBox.setSelected(false);
-            gatewayCheckBox.setSelected(false);
-        } finally {
-            closeQuietly(in);
-        }
-
-        updateRewriteControls();
-    }
-
-    private boolean saveConfig() {
-        int port = readPortFromField();
-        if (port <= 0) {
-            showError("Port must be a number between 1 und 65535.");
-            return false;
-        }
-
-        String keystorePath = keystoreField.getText().trim();
-        boolean mitmEnabled = mitmCheckBox.isSelected();
-        boolean rewriteEnabled = rewriteCheckBox.isSelected();
-        boolean gatewayEnabled = gatewayCheckBox.isSelected();
-
-        File dir = getConfigDir();
-        if (!dir.exists() && !dir.mkdirs()) {
-            showError("Could not create config directory: " + dir.getAbsolutePath());
-            return false;
-        }
-
-        Properties props = new Properties();
-        props.setProperty(KEY_PORT, String.valueOf(port));
-        props.setProperty(KEY_KEYSTORE_PATH, keystorePath);
-        props.setProperty(KEY_MITM_ENABLED, String.valueOf(mitmEnabled));
-        props.setProperty(KEY_REWRITE_ENABLED, String.valueOf(rewriteEnabled));
-        props.setProperty(KEY_REWRITE_MODEL, rewriteModelField.getText().trim());
-        props.setProperty(KEY_REWRITE_TEMPERATURE, rewriteTemperatureField.getText().trim());
-        props.setProperty(KEY_GATEWAY_ENABLED, String.valueOf(gatewayEnabled));
-
-        File file = getConfigFile();
-        FileOutputStream out = null;
-        try {
-            out = new FileOutputStream(file);
-            props.store(out, "Local proxy configuration");
-        } catch (IOException e) {
-            showError("Failed to save config: " + e.getMessage());
-            return false;
-        } finally {
-            closeQuietly(out);
-        }
-        return true;
-    }
-
-    private File getConfigDir() {
-        String home = System.getProperty("user.home");
-        return new File(home, CONFIG_DIR);
-    }
-
-    private File getConfigFile() {
-        return new File(getConfigDir(), CONFIG_FILE);
-    }
-
-    private String defaultKeystorePath() {
-        return new File(getConfigDir(), "myproxy.jks").getAbsolutePath();
-    }
-
-    private void showError(final String message) {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                JOptionPane.showMessageDialog(
-                        ProxyControlFrame.this,
-                        message,
-                        "Error",
-                        JOptionPane.ERROR_MESSAGE
-                );
-            }
-        });
-    }
-
-    private void closeQuietly(Closeable c) {
-        if (c == null) {
-            return;
-        }
-        try {
-            c.close();
-        } catch (IOException ignored) {
-            // Ignore
-        }
-    }
-
     // --- MITM keystore generation (PS scripts) ---
 
     private void runCertSetup() {
         int choice = JOptionPane.showConfirmDialog(
                 this,
                 "This will generate a local CA certificate and MITM keystore (myproxy.jks)\n" +
-                        "in your user directory under " + CONFIG_DIR + ".\n\n" +
+                        "in your user directory under .proxy.\n\n" +
                         "Use this only for local debugging. The generated CA can be used to\n" +
                         "intercept HTTPS traffic to api.openai.com via this proxy.",
                 "Generate MITM keystore?",
@@ -720,63 +497,30 @@ public class ProxyControlFrame extends JFrame {
             return;
         }
 
-        Thread worker = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                appendTraffic("setup", "Start MITM keystore generation ...", false);
+        Thread worker = new Thread(() -> {
+            appendTraffic("setup", "Start MITM keystore generation ...", false);
 
-                if (!isWindowsOs()) {
-                    showError("PowerShell-based certificate setup is only implemented for Windows.");
-                    appendTraffic("setup", "Abort: non-Windows OS detected.", false);
-                    return;
+            if (!isWindowsOs()) {
+                showError("PowerShell-based certificate setup is only implemented for Windows.");
+                appendTraffic("setup", "Abort: non-Windows OS detected.", false);
+                return;
+            }
+
+            try {
+                MitmSetupResult result = mitmSetupService.runMitmSetup();
+                appendTraffic("setup", result.log, false);
+                if (result.success && result.keystoreFile != null) {
+                    keystoreField.setText(result.keystoreFile.getAbsolutePath());
+                    mitmCheckBox.setSelected(true);
+                    saveConfig();
+                    updateRewriteControls();
+                    appendTraffic("setup", "myproxy.jks detected and MITM enabled in UI.", false);
+                } else {
+                    showError("MITM setup failed. See setup log.");
                 }
-
-                File configDir = getConfigDir();
-                if (!configDir.exists() && !configDir.mkdirs()) {
-                    showError("Could not create config directory: " + configDir.getAbsolutePath());
-                    appendTraffic("setup", "Abort: cannot create config dir.", false);
-                    return;
-                }
-
-                try {
-                    File createCaPs1 = extractResourceIfMissing(
-                            RESOURCE_CREATE_CA,
-                            new File(configDir, "create-ca.ps1")
-                    );
-                    File openAiPs1 = extractResourceIfMissing(
-                            RESOURCE_OPENAI_CERT,
-                            new File(configDir, "create-openai-cert.ps1")
-                    );
-
-                    int r1 = runPowerShellScript(configDir, createCaPs1);
-                    appendTraffic("setup", "create-ca.ps1 finished with exit code " + r1, false);
-                    if (r1 != 0) {
-                        showError("create-ca.ps1 failed. See setup log.");
-                        return;
-                    }
-
-                    int r2 = runPowerShellScript(configDir, openAiPs1);
-                    appendTraffic("setup", "create-openai-cert.ps1 finished with exit code " + r2, false);
-                    if (r2 != 0) {
-                        showError("create-openai-cert.ps1 failed. See setup log.");
-                        return;
-                    }
-
-                    File ks = new File(configDir, "myproxy.jks");
-                    if (ks.exists()) {
-                        keystoreField.setText(ks.getAbsolutePath());
-                        mitmCheckBox.setSelected(true);
-                        saveConfig();
-                        updateRewriteControls();
-                        appendTraffic("setup", "myproxy.jks detected and MITM enabled in UI.", false);
-                    } else {
-                        showError("myproxy.jks was not created. Check PowerShell output.");
-                        appendTraffic("setup", "myproxy.jks not found after scripts.", false);
-                    }
-                } catch (IOException e) {
-                    showError("Error during certificate setup: " + e.getMessage());
-                    appendTraffic("setup", "Exception: " + e.getMessage(), false);
-                }
+            } catch (IOException e) {
+                showError("Error during certificate setup: " + e.getMessage());
+                appendTraffic("setup", "Exception: " + e.getMessage(), false);
             }
         }, "mitm-setup");
         worker.setDaemon(true);
@@ -791,8 +535,7 @@ public class ProxyControlFrame extends JFrame {
             return;
         }
 
-        File configDir = getConfigDir();
-        File caFile = new File(configDir, CA_CERT_FILE_NAME);
+        java.io.File caFile = caInstallService.getCaFile();
         if (!caFile.exists()) {
             showError("CA certificate not found: " + caFile.getAbsolutePath() +
                     "\nRun 'Generate MITM keystore' first.");
@@ -820,67 +563,32 @@ public class ProxyControlFrame extends JFrame {
             return;
         }
 
-        Thread worker = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                appendTraffic("setup", "Start CA installation into Windows Root store ...", false);
-                try {
-                    int exit = runCertUtilAddStore(caFile);
-                    appendTraffic("setup", "certutil exit code: " + exit, false);
-                    if (exit == 0) {
-                        appendTraffic("setup", "CA successfully installed into Windows Root store.", false);
-                        JOptionPane.showMessageDialog(
-                                ProxyControlFrame.this,
-                                "CA successfully installed into Windows Root store.",
-                                "Success",
-                                JOptionPane.INFORMATION_MESSAGE
-                        );
-                    } else {
-                        showError("certutil failed. See setup log. Run as Administrator?");
-                    }
-                } catch (IOException e) {
-                    showError("Failed to run certutil: " + e.getMessage());
-                    appendTraffic("setup", "certutil error: " + e.getMessage(), false);
+        Thread worker = new Thread(() -> {
+            appendTraffic("setup", "Start CA installation into Windows Root store ...", false);
+            try {
+                CaInstallResult result = caInstallService.installCa(caFile);
+                appendTraffic("setup", "certutil exit code: " + result.exitCode, false);
+                appendTraffic("setup", "certutil output:\n" + result.log, false);
+                if (result.success) {
+                    appendTraffic("setup", "CA successfully installed into Windows Root store.", false);
+                    JOptionPane.showMessageDialog(
+                            ProxyControlFrame.this,
+                            "CA successfully installed into Windows Root store.",
+                            "Success",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                } else {
+                    showError("certutil failed. See setup log. Run as Administrator?");
                 }
+            } catch (IOException e) {
+                showError("Failed to run certutil: " + e.getMessage());
+                appendTraffic("setup", "certutil error: " + e.getMessage(), false);
             }
         }, "ca-install");
         worker.setDaemon(true);
         worker.start();
     }
 
-    private int runCertUtilAddStore(File caFile) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder(
-                "certutil",
-                "-addstore",
-                "-f",
-                "Root",
-                caFile.getAbsolutePath()
-        );
-        pb.redirectErrorStream(true);
-
-        Process process = pb.start();
-
-        BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream(), "UTF-8")
-        );
-
-        String line;
-        StringBuilder output = new StringBuilder();
-        while ((line = reader.readLine()) != null) {
-            output.append(line).append("\n");
-        }
-
-        int exitCode;
-        try {
-            exitCode = process.waitFor();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("certutil interrupted", e);
-        }
-
-        appendTraffic("setup", "certutil output:\n" + output.toString(), false);
-        return exitCode;
-    }
 
     // --- shared helpers for scripts ---
 
@@ -952,6 +660,31 @@ public class ProxyControlFrame extends JFrame {
     private boolean isWindowsOs() {
         String os = System.getProperty("os.name");
         return os != null && os.toLowerCase().contains("win");
+    }
+
+    private void showError(final String message) {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                JOptionPane.showMessageDialog(
+                        ProxyControlFrame.this,
+                        message,
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            }
+        });
+    }
+
+    private void closeQuietly(Closeable c) {
+        if (c == null) {
+            return;
+        }
+        try {
+            c.close();
+        } catch (IOException ignored) {
+            // Ignore
+        }
     }
 
     public static void main(String[] args) {
