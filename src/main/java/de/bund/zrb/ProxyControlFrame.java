@@ -36,6 +36,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private JTextField clientPortField;
 
     private JButton publicIpCopyButton;
+    private JButton clientHostPasteButton;
 
     private final ProxyConfigService configService = new ProxyConfigService();
     private final PublicIpService publicIpService = new PublicIpService();
@@ -92,9 +93,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         trafficPane.setEditable(false);
         trafficPane.setText("<html><body style='font-family:monospace;font-size:11px;'></body></html>");
 
-        clientHostField = new JTextField("127.0.0.1", 12);
-        clientPortField = new JTextField("8888", 5);
-
         publicIpCopyButton = new JButton("⧉"); // Copy-Symbol
         publicIpCopyButton.setMargin(new java.awt.Insets(0, 0, 0, 0));
         publicIpCopyButton.setFocusable(false);
@@ -102,10 +100,24 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         publicIpCopyButton.setContentAreaFilled(false);
         publicIpCopyButton.setToolTipText("Copy public IP to clipboard");
         // etwas größer als die Schrift, aber quadratisch
-        Dimension d = new Dimension(18, 18);
-        publicIpCopyButton.setPreferredSize(d);
-        publicIpCopyButton.setMinimumSize(d);
-        publicIpCopyButton.setMaximumSize(d);
+        Dimension ipBtnSize = new Dimension(18, 18);
+        publicIpCopyButton.setPreferredSize(ipBtnSize);
+        publicIpCopyButton.setMinimumSize(ipBtnSize);
+        publicIpCopyButton.setMaximumSize(ipBtnSize);
+
+        clientHostField = new JTextField("127.0.0.1", 12);
+        clientPortField = new JTextField("8888", 5);
+
+        clientHostPasteButton = new JButton("⧉");
+        clientHostPasteButton.setMargin(new java.awt.Insets(0, 0, 0, 0));
+        clientHostPasteButton.setFocusable(false);
+        clientHostPasteButton.setBorderPainted(false);
+        clientHostPasteButton.setContentAreaFilled(false);
+        clientHostPasteButton.setToolTipText("Paste host from clipboard");
+        Dimension pasteBtnSize = new Dimension(18, 18);
+        clientHostPasteButton.setPreferredSize(pasteBtnSize);
+        clientHostPasteButton.setMinimumSize(pasteBtnSize);
+        clientHostPasteButton.setMaximumSize(pasteBtnSize);
 
         initMenuBar();
         initToolBar();
@@ -151,6 +163,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         toolBar.addSeparator();
         toolBar.add(new JLabel("Target:"));
         toolBar.add(clientHostField);
+        toolBar.add(clientHostPasteButton);
         toolBar.add(new JLabel(":"));
         toolBar.add(clientPortField);
         toolBar.addSeparator();
@@ -209,7 +222,12 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         mitmCheckBox.addActionListener(e -> updateRewriteControls());
         rewriteCheckBox.addActionListener(e -> updateRewriteControls());
-        publicIpCopyButton.addActionListener(e -> copyPublicIpToClipboard());
+        publicIpCopyButton.addActionListener(e -> {
+            copyPublicIpToClipboard();
+            blinkLabel(publicIpLabel);
+        });
+
+        clientHostPasteButton.addActionListener(e -> pasteHostFromClipboard());
 
         // Host/Port-Änderungen in der Toolbar sofort in die Config schreiben
         clientHostField.addActionListener(e -> saveConfig());
@@ -264,8 +282,41 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             java.awt.datatransfer.StringSelection selection = new java.awt.datatransfer.StringSelection(ip);
             java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, null);
         } catch (Exception ignored) {
-            // still fail silently, kein Bestätigungsdialog gewünscht
+            // kein Dialog
         }
+    }
+
+    private void pasteHostFromClipboard() {
+        try {
+            java.awt.datatransfer.Clipboard cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+            java.awt.datatransfer.Transferable t = cb.getContents(null);
+            if (t != null && t.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)) {
+                String data = (String) t.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
+                if (data != null) {
+                    data = data.trim();
+                    if (!data.isEmpty()) {
+                        clientHostField.setText(data);
+                        blinkComponent(clientHostField);
+                        saveConfig();
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // still silent
+        }
+    }
+
+    private void blinkLabel(final JLabel label) {
+        blinkComponent(label);
+    }
+
+    private void blinkComponent(final JComponent comp) {
+        final Color original = comp.getForeground();
+        final Color blinkColor = Color.GREEN.darker();
+        comp.setForeground(blinkColor);
+        javax.swing.Timer timer = new javax.swing.Timer(200, e -> comp.setForeground(original));
+        timer.setRepeats(false);
+        timer.start();
     }
 
     private void loadConfig() {
