@@ -238,7 +238,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 clientHostField.setText(cfg.getClientHost());
                 clientPortField.setText(String.valueOf(cfg.getClientPort()));
                 gatewayPasskeyField.setText(cfg.getClientGatewayPasskey());
-                System.out.println("CLIENT");
             } else {
                 // Letzte CLIENT-Werte vor dem Umschalten speichern
                 cfg.setClientPort(clientPortField.getText());
@@ -254,7 +253,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 clientPortField.setText(String.valueOf(cfg.getServerPort()));
                 gatewayPasskeyField.setText(cfg.getServerGatewayPasskey());
                 gatewayCheckBox.setSelected(cfg.isGatewayEnabled());
-                System.out.println("SERVER");
             }
         });
 
