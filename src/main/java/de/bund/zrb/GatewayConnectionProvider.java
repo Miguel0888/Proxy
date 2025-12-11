@@ -25,4 +25,8 @@ public class GatewayConnectionProvider implements OutboundConnectionProvider {
         GatewaySession session = sessionManager.getActiveSessionOrThrow();
         return session.openHttpConnection(host, port);
     }
+
+    public void blockConnectionsUntilSessionActive() {
+        // Implement logic to block connections
+    }
 }

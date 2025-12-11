@@ -14,6 +14,9 @@ public class ProxyConfig {
     private final String clientHost;
     private final int clientPort;
 
+    // Neuer Gateway-Passkey (für Authentifizierung des Gateway-Clients)
+    private final String gatewayPasskey;
+
     private boolean showHelpOnStart = true;
 
     public ProxyConfig(int port,
@@ -26,6 +29,30 @@ public class ProxyConfig {
                        ProxyMode proxyMode,
                        String clientHost,
                        int clientPort) {
+        this(port,
+                keystorePath,
+                mitmEnabled,
+                rewriteEnabled,
+                rewriteModel,
+                rewriteTemperature,
+                gatewayEnabled,
+                proxyMode,
+                clientHost,
+                clientPort,
+                "passkey1234");
+    }
+
+    public ProxyConfig(int port,
+                       String keystorePath,
+                       boolean mitmEnabled,
+                       boolean rewriteEnabled,
+                       String rewriteModel,
+                       String rewriteTemperature,
+                       boolean gatewayEnabled,
+                       ProxyMode proxyMode,
+                       String clientHost,
+                       int clientPort,
+                       String gatewayPasskey) {
         this.port = port;
         this.keystorePath = keystorePath;
         this.mitmEnabled = mitmEnabled;
@@ -36,6 +63,9 @@ public class ProxyConfig {
         this.proxyMode = proxyMode != null ? proxyMode : ProxyMode.SERVER;
         this.clientHost = (clientHost == null || clientHost.trim().isEmpty()) ? "127.0.0.1" : clientHost.trim();
         this.clientPort = (clientPort <= 0 || clientPort > 65535) ? 8888 : clientPort;
+        this.gatewayPasskey = (gatewayPasskey == null || gatewayPasskey.trim().isEmpty())
+                ? "passkey1234"
+                : gatewayPasskey.trim();
         this.showHelpOnStart = true;
     }
 
@@ -77,6 +107,10 @@ public class ProxyConfig {
 
     public int getClientPort() {
         return clientPort;
+    }
+
+    public String getGatewayPasskey() {
+        return gatewayPasskey;
     }
 
     public boolean isShowHelpOnStart() {

@@ -21,6 +21,7 @@ class ProxyConfigService {
     private static final String KEY_CLIENT_HOST = "proxy.client.host";
     private static final String KEY_CLIENT_PORT = "proxy.client.port";
     private static final String KEY_SHOW_HELP_ON_START = "proxy.showHelpOnStart";
+    private static final String KEY_GATEWAY_PASSKEY = "proxy.gateway.passkey";
 
     ProxyConfig loadConfig() {
         File file = getConfigFile();
@@ -60,8 +61,10 @@ class ProxyConfigService {
                 clientPort = 8888;
             }
 
+            String gatewayPasskey = props.getProperty(KEY_GATEWAY_PASSKEY, "passkey1234");
+
             ProxyConfig cfg = new ProxyConfig(port, ks, mitm, rewriteEnabled, rewriteModel, rewriteTemp,
-                    gatewayEnabled, proxyMode, clientHost, clientPort);
+                    gatewayEnabled, proxyMode, clientHost, clientPort, gatewayPasskey);
 
             // Help-Flag aus Properties lesen
             String showHelpRaw = props.getProperty(KEY_SHOW_HELP_ON_START);
@@ -96,6 +99,7 @@ class ProxyConfigService {
         props.setProperty(KEY_CLIENT_HOST, config.getClientHost());
         props.setProperty(KEY_CLIENT_PORT, String.valueOf(config.getClientPort()));
         props.setProperty(KEY_SHOW_HELP_ON_START, String.valueOf(config.isShowHelpOnStart()));
+        props.setProperty(KEY_GATEWAY_PASSKEY, config.getGatewayPasskey());
 
         File file = getConfigFile();
         FileOutputStream out = null;
@@ -123,7 +127,7 @@ class ProxyConfigService {
     private ProxyConfig defaultConfig() {
         ProxyConfig cfg = new ProxyConfig(8888, defaultKeystorePath(), false, false,
                 "gpt-5-mini", "1.0", false, ProxyMode.SERVER,
-                "127.0.0.1", 8888);
+                "127.0.0.1", 8888, "passkey1234");
         cfg.setShowHelpOnStart(true);
         return cfg;
     }

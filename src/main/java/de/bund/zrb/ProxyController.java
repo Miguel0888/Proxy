@@ -70,7 +70,8 @@ class ProxyController {
                 }
 
                 int gatewayPort = port + 1;
-                gatewayServer = new GatewayServer(gatewayPort, gatewaySessionManager, trafficListener, view);
+                String passkey = config.getGatewayPasskey();
+                gatewayServer = new GatewayServer(gatewayPort, gatewaySessionManager, trafficListener, view, passkey);
                 gatewayServer.start();
                 if (trafficListener != null) {
                     trafficListener.onTraffic(

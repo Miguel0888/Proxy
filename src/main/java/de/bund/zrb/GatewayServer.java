@@ -12,6 +12,7 @@ class GatewayServer {
     private final GatewaySessionManager sessionManager;
     private final MitmTrafficListener trafficListener;
     private final ProxyView view;
+    private final String expectedPasskey;
 
     private volatile boolean running;
     private ServerSocket serverSocket;
@@ -20,11 +21,13 @@ class GatewayServer {
     GatewayServer(int port,
                   GatewaySessionManager sessionManager,
                   MitmTrafficListener trafficListener,
-                  ProxyView view) {
+                  ProxyView view,
+                  String expectedPasskey) {
         this.port = port;
         this.sessionManager = sessionManager;
         this.trafficListener = trafficListener;
         this.view = view;
+        this.expectedPasskey = expectedPasskey != null ? expectedPasskey.trim() : "";
     }
 
     synchronized void start() throws IOException {
@@ -70,15 +73,34 @@ class GatewayServer {
                 String hello = reader.readLine();
                 if (hello == null || !hello.startsWith("HELLO ")) {
                     log("Invalid HELLO from " + socket.getRemoteSocketAddress());
-                    try {
-                        socket.close();
-                    } catch (IOException ignored) {
-                        // Ignore
-                    }
+                    closeQuietly(socket);
                     return;
                 }
 
-                String id = hello.substring("HELLO ".length()).trim();
+                // Erwartetes Format: HELLO <id> [<passkey>]
+                String rest = hello.substring("HELLO ".length()).trim();
+                String[] parts = rest.split(" ");
+                String id;
+                String passkey = null;
+                if (parts.length >= 1) {
+                    id = parts[0];
+                    if (parts.length >= 2) {
+                        passkey = parts[1];
+                    }
+                } else {
+                    log("Invalid HELLO payload from " + socket.getRemoteSocketAddress());
+                    closeQuietly(socket);
+                    return;
+                }
+
+                if (!expectedPasskey.isEmpty()) {
+                    if (passkey == null || !expectedPasskey.equals(passkey)) {
+                        log("Gateway client rejected due to invalid passkey from " + socket.getRemoteSocketAddress());
+                        closeQuietly(socket);
+                        return;
+                    }
+                }
+
                 String remote = String.valueOf(socket.getRemoteSocketAddress());
                 log("Gateway client connected: " + remote + " id=" + id);
 
@@ -141,6 +163,15 @@ class GatewayServer {
             trafficListener.onTraffic("info", msg, false);
         } else {
             System.out.println("[GatewayServer] " + msg);
+        }
+    }
+
+    private void closeQuietly(Socket s) {
+        if (s == null) return;
+        try {
+            s.close();
+        } catch (IOException ignored) {
+            // Ignore
         }
     }
 }

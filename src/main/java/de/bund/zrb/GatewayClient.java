@@ -3,7 +3,7 @@ package de.bund.zrb;
 import java.io.*;
 import java.net.Socket;
 
-// Implemented GatewayClient for CLIENT mode: connects to server, sends HELLO <id>, then handles CONNECT/HTTP commands by opening local sockets and tunneling bytes.
+// Implemented GatewayClient for CLIENT mode: connects to server, sends HELLO <id> [<passkey>], then handles CONNECT/HTTP commands by opening local sockets and tunneling bytes.
 class GatewayClient {
 
     private final String host;
@@ -33,6 +33,7 @@ class GatewayClient {
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
             Writer writer = new OutputStreamWriter(socket.getOutputStream(), "UTF-8");
 
+            // Vorerst: HELLO <id> (Passkey-Integration folgt über Konfiguration)
             writer.write("HELLO " + gatewayId + "\r\n");
             writer.flush();
 
