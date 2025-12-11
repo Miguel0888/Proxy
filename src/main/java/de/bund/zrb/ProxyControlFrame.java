@@ -52,7 +52,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         layoutComponents();
         initActions();
         initPublicIpStatus();
-        loadConfig();
+        loadConfig(); // lädt auch clientHost/clientPort in die Toolbar
         updateStatus();
         updateRewriteControls();
 
@@ -199,6 +199,22 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         mitmCheckBox.addActionListener(e -> updateRewriteControls());
         rewriteCheckBox.addActionListener(e -> updateRewriteControls());
         publicIpCopyButton.addActionListener(e -> copyPublicIpToClipboard());
+
+        // Host/Port-Änderungen in der Toolbar sofort in die Config schreiben
+        clientHostField.addActionListener(e -> saveConfig());
+        clientPortField.addActionListener(e -> saveConfig());
+        clientHostField.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusLost(java.awt.event.FocusEvent e) {
+                saveConfig();
+            }
+        });
+        clientPortField.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusLost(java.awt.event.FocusEvent e) {
+                saveConfig();
+            }
+        });
     }
 
     private void initPublicIpStatus() {
@@ -256,7 +272,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         modeToggleButton.setSelected(clientMode);
         updateModeToggleText();
 
-        // Client-Host/Port aus Config oder Default 127.0.0.1:8888
+        // Host/Port aus letzter gespeicherter Config in Toolbar laden
         clientHostField.setText(cfg.getClientHost());
         clientPortField.setText(String.valueOf(cfg.getClientPort()));
 
