@@ -225,18 +225,18 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             ProxyConfig cfg = configService.loadConfig();
 
             if (nowClientMode) {
-                // Letzte Werte speichern:
-                cfg.setClientPort(clientPortField.getText());
-                cfg.setClientGatewayPasskey(gatewayPasskeyField.getText());
+                // Letzte Werte vor dem Umschalten speichern:
+                cfg.setServerPort(clientPortField.getText());
+                cfg.setServerGatewayPasskey(gatewayPasskeyField.getText());
                 // CLIENT-Mode: Toolbar mit Client-Werten aus Config befüllen
                 clientHostField.setText(cfg.getClientHost());
                 clientPortField.setText(String.valueOf(cfg.getClientPort()));
                 gatewayPasskeyField.setText(cfg.getClientGatewayPasskey());
                 System.out.println("CLIENT");
             } else {
-                // Letzte Werte speichern:
-                cfg.setServerPort(clientPortField.getText());
-                cfg.setServerGatewayPasskey(gatewayPasskeyField.getText());
+                // Letzte Werte vor dem Umschalten speichern:
+                cfg.setClientPort(clientPortField.getText());
+                cfg.setClientGatewayPasskey(gatewayPasskeyField.getText());
                 // SERVER-Mode: Port & Passkey aus Config holen
                 portField.setText(String.valueOf(cfg.getPort()));
                 clientPortField.setText(String.valueOf(cfg.getServerPort()));
