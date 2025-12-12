@@ -97,33 +97,15 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         trafficPane.setEditable(false);
         trafficPane.setText("<html><body style='font-family:monospace;font-size:11px;'></body></html>");
 
-        publicIpCopyButton = new JButton("⧉"); // Copy-Symbol
-        publicIpCopyButton.setMargin(new java.awt.Insets(0, 0, 0, 0));
-        publicIpCopyButton.setFocusable(false);
-        publicIpCopyButton.setBorderPainted(false);
-        publicIpCopyButton.setContentAreaFilled(false);
-        publicIpCopyButton.setToolTipText("Copy public IP to clipboard");
-        // etwas größer als die Schrift, aber quadratisch
-        Dimension ipBtnSize = new Dimension(18, 18);
-        publicIpCopyButton.setPreferredSize(ipBtnSize);
-        publicIpCopyButton.setMinimumSize(ipBtnSize);
-        publicIpCopyButton.setMaximumSize(ipBtnSize);
+        // Kleine Symbol-Buttons über gemeinsame Factory-Methode erzeugen,
+        // um sicherzustellen, dass Margin/Insets wirklich 0 sind und genug Platz da ist.
+        publicIpCopyButton = createSmallIconButton("\u29C9", "Copy public IP to clipboard");
+        clientHostPasteButton = createSmallIconButton("\u29C9", "Paste host from clipboard");
 
         clientHostField = new JTextField("127.0.0.1", 12);
         clientPortField = new JTextField("8888", 5);
 
         gatewayPasskeyField = new JTextField("passkey1234", 10);
-
-        clientHostPasteButton = new JButton("⧉");
-        clientHostPasteButton.setMargin(new java.awt.Insets(0, 0, 0, 0));
-        clientHostPasteButton.setFocusable(false);
-        clientHostPasteButton.setBorderPainted(false);
-        clientHostPasteButton.setContentAreaFilled(false);
-        clientHostPasteButton.setToolTipText("Paste host from clipboard");
-        Dimension pasteBtnSize = new Dimension(18, 18);
-        clientHostPasteButton.setPreferredSize(pasteBtnSize);
-        clientHostPasteButton.setMinimumSize(pasteBtnSize);
-        clientHostPasteButton.setMaximumSize(pasteBtnSize);
 
         initMenuBar();
         initToolBar();
@@ -975,6 +957,40 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     @Override
     public String getClientGatewayPasskey() {
         return gatewayPasskeyField != null ? gatewayPasskeyField.getText().trim() : "passkey1234";
+    }
+
+    /**
+     * Erzeugt einen sehr kleinen, flachen Button für Symbol-Text (z.B. Copy/Paste).
+     * Wichtig: Insets/Margins werden strikt auf 0 gesetzt, Font leicht verkleinert
+     * und eine etwas größere Kachelgröße gewählt, um Darstellungsfehler wie ".."
+     * auf manchen Systemen zu vermeiden.
+     */
+    private JButton createSmallIconButton(String text, String tooltip) {
+        JButton button = new JButton(text);
+        button.setToolTipText(tooltip);
+
+        // Fokusrahmen und Hintergrund deaktivieren – wie bisher
+        button.setFocusable(false);
+        button.setBorderPainted(false);
+        button.setContentAreaFilled(false);
+
+        // Schrift minimal verkleinern, damit das Symbol sicher in die Box passt
+        Font f = button.getFont();
+        if (f != null) {
+            button.setFont(f.deriveFont(Math.max(8f, f.getSize2D() - 1f)));
+        }
+
+        // WICHTIG: Keine zusätzlichen Abstände zulassen
+        button.setMargin(new Insets(0, 0, 0, 0));
+        button.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+
+        // Etwas großzügiger als vorher, damit der Glyph nicht abgeschnitten wird
+        Dimension size = new Dimension(20, 20);
+        button.setPreferredSize(size);
+        button.setMinimumSize(size);
+        button.setMaximumSize(size);
+
+        return button;
     }
 
     public static void main(String[] args) {
