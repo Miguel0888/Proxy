@@ -1,4 +1,6 @@
-package de.bund.zrb;
+package de.bund.zrb.server.gateway;
+
+import de.bund.zrb.GatewaySession;
 
 import java.io.IOException;
 

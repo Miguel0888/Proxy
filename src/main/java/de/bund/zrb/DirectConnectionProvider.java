@@ -4,12 +4,12 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 
-class DirectConnectionProvider implements OutboundConnectionProvider {
+public class DirectConnectionProvider implements OutboundConnectionProvider {
 
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
 
-    DirectConnectionProvider(int connectTimeoutMillis, int readTimeoutMillis) {
+    public DirectConnectionProvider(int connectTimeoutMillis, int readTimeoutMillis) {
         this.connectTimeoutMillis = connectTimeoutMillis;
         this.readTimeoutMillis = readTimeoutMillis;
     }

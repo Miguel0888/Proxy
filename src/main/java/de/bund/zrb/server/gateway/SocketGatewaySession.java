@@ -1,4 +1,8 @@
-package de.bund.zrb;
+package de.bund.zrb.server.gateway;
+
+import de.bund.zrb.GatewaySession;
+import de.bund.zrb.mitm.MitmTrafficListener;
+import de.bund.zrb.common.ProxyView;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -23,7 +27,7 @@ import java.net.Socket;
  * other threads. openConnectTunnel/openHttpConnection only write commands and then
  * wait for the reader thread to report the confirmation.
  */
-class SocketGatewaySession implements GatewaySession {
+public class SocketGatewaySession implements GatewaySession {
 
     private final String id;
     private final String remoteAddress;
@@ -170,7 +174,7 @@ class SocketGatewaySession implements GatewaySession {
      * - Deliver tunnel confirmation lines back to openTunnel(...) via tunnelLock.
      * - Close session on EOF or IO error.
      */
-    void run() {
+    public void run() {
         // Update server UI: gateway client is connected
         if (view != null) {
             view.updateGatewayClientStatus("Gateway client connected: " + remoteAddress, true);

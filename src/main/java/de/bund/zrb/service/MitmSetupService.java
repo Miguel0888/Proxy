@@ -1,15 +1,18 @@
-package de.bund.zrb;
+package de.bund.zrb.service;
+
+import de.bund.zrb.mitm.MitmSetupResult;
+import de.bund.zrb.app.ProxyControlFrame;
 
 import java.io.*;
 
-class MitmSetupService {
+public class MitmSetupService {
 
     private final ProxyConfigService configService = new ProxyConfigService();
 
     private static final String RESOURCE_CREATE_CA = "/ps/create-ca.ps1";
     private static final String RESOURCE_OPENAI_CERT = "/ps/create-openai-cert.ps1";
 
-    MitmSetupResult runMitmSetup() throws IOException {
+    public MitmSetupResult runMitmSetup() throws IOException {
         File configDir = configService.getConfigDir();
         if (!configDir.exists() && !configDir.mkdirs()) {
             throw new IOException("Could not create config directory: " + configDir.getAbsolutePath());

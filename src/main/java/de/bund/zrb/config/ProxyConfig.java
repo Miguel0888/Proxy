@@ -1,4 +1,6 @@
-package de.bund.zrb;
+package de.bund.zrb.config;
+
+import de.bund.zrb.ProxyMode;
 
 public class ProxyConfig {
 

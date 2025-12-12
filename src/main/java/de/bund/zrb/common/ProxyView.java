@@ -1,4 +1,4 @@
-package de.bund.zrb;
+package de.bund.zrb.common;
 
 public interface ProxyView {
     // Status des Gateway-Clients aktualisieren (z.B. in Statusleiste anzeigen)

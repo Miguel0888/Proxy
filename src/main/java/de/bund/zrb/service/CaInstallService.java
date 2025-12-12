@@ -1,18 +1,20 @@
-package de.bund.zrb;
+package de.bund.zrb.service;
+
+import de.bund.zrb.mitm.CaInstallResult;
 
 import java.io.*;
 
-class CaInstallService {
+public class CaInstallService {
 
     private final ProxyConfigService configService = new ProxyConfigService();
 
     private static final String CA_CERT_FILE_NAME = "myproxy-ca.crt";
 
-    File getCaFile() {
+    public File getCaFile() {
         return new File(configService.getConfigDir(), CA_CERT_FILE_NAME);
     }
 
-    CaInstallResult installCa(File caFile) throws IOException {
+    public CaInstallResult installCa(File caFile) throws IOException {
         StringBuilder log = new StringBuilder();
 
         ProcessBuilder pb = new ProcessBuilder(

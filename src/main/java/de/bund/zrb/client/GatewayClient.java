@@ -1,10 +1,13 @@
-package de.bund.zrb;
+package de.bund.zrb.client;
+
+import de.bund.zrb.mitm.MitmTrafficListener;
+import de.bund.zrb.common.ProxyView;
 
 import java.io.*;
 import java.net.Socket;
 
 // GatewayClient im CLIENT-Mode: verbindet sich zum Server und dient als Tunnel-Endpunkt.
-class GatewayClient {
+public class GatewayClient {
 
     private final String host;
     private final int port;
@@ -25,7 +28,7 @@ class GatewayClient {
         this.view = view;
     }
 
-    void run() throws IOException {
+    public void run() throws IOException {
         log("GatewayClient connecting to " + host + ":" + port);
         try (Socket socket = new Socket(host, port)) {
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));

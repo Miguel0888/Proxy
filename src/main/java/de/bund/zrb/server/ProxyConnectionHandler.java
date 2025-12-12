@@ -1,4 +1,10 @@
-package de.bund.zrb;
+package de.bund.zrb.server;
+
+import de.bund.zrb.*;
+import de.bund.zrb.common.ProxyView;
+import de.bund.zrb.mitm.MitmHandler;
+import de.bund.zrb.server.gateway.GatewaySessionManager;
+import de.bund.zrb.server.gateway.SocketGatewaySession;
 
 import java.io.*;
 import java.net.Socket;

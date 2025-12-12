@@ -1,5 +1,7 @@
 package de.bund.zrb;
 
+import de.bund.zrb.server.gateway.GatewaySessionManager;
+
 import java.io.IOException;
 import java.net.Socket;
 

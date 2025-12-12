@@ -1,7 +1,16 @@
-package de.bund.zrb;
+package de.bund.zrb.app;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import de.bund.zrb.*;
+import de.bund.zrb.common.ProxyView;
+import de.bund.zrb.config.ProxyConfig;
+import de.bund.zrb.mitm.CaInstallResult;
+import de.bund.zrb.mitm.MitmSetupResult;
+import de.bund.zrb.service.CaInstallService;
+import de.bund.zrb.service.MitmSetupService;
+import de.bund.zrb.service.ProxyConfigService;
+import de.bund.zrb.service.PublicIpService;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;

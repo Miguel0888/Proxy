@@ -1,4 +1,4 @@
-package de.bund.zrb;
+package de.bund.zrb.service;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -7,9 +7,9 @@ import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.URL;
 
-class PublicIpService {
+public class PublicIpService {
 
-    String resolvePublicIp() {
+    public String resolvePublicIp() {
         BufferedReader reader = null;
         try {
             URL url = new URL("https://checkip.amazonaws.com/");

@@ -1,4 +1,15 @@
-package de.bund.zrb;
+package de.bund.zrb.app;
+
+import de.bund.zrb.*;
+import de.bund.zrb.client.GatewayClient;
+import de.bund.zrb.common.ProxyView;
+import de.bund.zrb.config.ProxyConfig;
+import de.bund.zrb.mitm.*;
+import de.bund.zrb.server.LocalProxyServer;
+import de.bund.zrb.server.gateway.GatewaySessionManager;
+import de.bund.zrb.service.CaInstallService;
+import de.bund.zrb.service.MitmSetupService;
+import de.bund.zrb.service.ProxyConfigService;
 
 import java.io.File;
 import java.io.IOException;

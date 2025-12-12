@@ -1,4 +1,4 @@
-package de.bund.zrb;
+package de.bund.zrb.mitm;
 
 import java.io.IOException;
 import java.net.Socket;
