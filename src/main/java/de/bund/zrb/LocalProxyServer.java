@@ -121,4 +121,24 @@ public class LocalProxyServer {
             }
         }
     }
+
+    private static class ClientConnectionTask implements Runnable {
+
+        private final Socket clientSocket;
+        private final ProxyConnectionHandler connectionHandler;
+
+        public ClientConnectionTask(Socket clientSocket, ProxyConnectionHandler connectionHandler) {
+            this.clientSocket = clientSocket;
+            this.connectionHandler = connectionHandler;
+        }
+
+        @Override
+        public void run() {
+            try {
+                connectionHandler.handle(clientSocket);
+            } catch (IOException e) {
+                System.err.println("[Proxy] Connection error: " + e.getMessage());
+            }
+        }
+    }
 }
