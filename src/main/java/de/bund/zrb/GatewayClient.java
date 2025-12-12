@@ -11,6 +11,9 @@ class GatewayClient {
     private final MitmTrafficListener trafficListener;
     private final ProxyView view;
 
+    // Einfaches Flag, ob aktuell ein Tunnel aktiv ist
+    private volatile boolean connected;
+
     GatewayClient(String host,
                   int port,
                   String ignoredId, // frühere ID, jetzt ungenutzt
@@ -87,49 +90,106 @@ class GatewayClient {
                     break;
                 }
 
-                handleConnect(socket, writer, targetHost, targetPort);
+                // Einfache Ein-Thread-Lösung: in diesem Thread synchron tunneln.
+                handleConnectSingleThread(socket, targetHost, targetPort);
                 break;
             }
         } finally {
+            connected = false;
             if (view != null) {
                 view.updateGatewayClientStatus("No client connected", false);
             }
         }
     }
 
-    private void handleConnect(Socket controlSocket,
-                               Writer writer,
-                               String targetHost,
-                               int targetPort) throws IOException {
+    /**
+     * Einfache Ein-Thread-Variante: Wir beenden das Protokoll, öffnen eine lokale Verbindung
+     * und pumpen dann im aktuellen Thread abwechselnd von controlSocket->target und target->controlSocket.
+     *
+     * Dadurch verwenden wir keinen zweiten Thread und vermeiden die Race-Condition auf demselben Socket.
+     */
+    private void handleConnectSingleThread(Socket controlSocket,
+                                           String targetHost,
+                                           int targetPort) throws IOException {
         log("GatewayClient: opening local connection to " + targetHost + ":" + targetPort);
+
+        connected = true;
+        if (view != null) {
+            view.updateGatewayClientStatus("Gateway tunnel connected to " + targetHost + ":" + targetPort, true);
+        }
+
         try (Socket target = new Socket(targetHost, targetPort)) {
-            writer.write("OK\r\n");
-            writer.flush();
+            InputStream controlIn = controlSocket.getInputStream();
+            OutputStream controlOut = controlSocket.getOutputStream();
+            InputStream targetIn = target.getInputStream();
+            OutputStream targetOut = target.getOutputStream();
 
-            Thread t1 = new Thread(new SocketPipeTask(controlSocket, target), "gw-client-to-target");
-            Thread t2 = new Thread(new SocketPipeTask(target, controlSocket), "gw-target-to-client");
-            t1.setDaemon(true);
-            t2.setDaemon(true);
-            t1.start();
-            t2.start();
+            // Dem Server signalisieren, dass der Tunnel bereit ist.
+            OutputStreamWriter protoWriter = new OutputStreamWriter(controlOut, "UTF-8");
+            protoWriter.write("OK\r\n");
+            protoWriter.flush();
 
-            try {
-                t1.join();
-                t2.join();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            byte[] buf = new byte[8192];
+
+            // Solange einer der beiden Sockets offen ist, versuchen wir zu pumpen.
+            while (!controlSocket.isClosed() && !target.isClosed()) {
+                boolean progressed = false;
+
+                // 1) Daten vom Client (controlSocket) zum Ziel pumpen, falls etwas anliegt
+                if (controlIn.available() > 0) {
+                    int read = controlIn.read(buf);
+                    if (read == -1) {
+                        break; // Client hat geschlossen
+                    }
+                    targetOut.write(buf, 0, read);
+                    targetOut.flush();
+                    progressed = true;
+                }
+
+                // 2) Daten vom Ziel zurück zum Client pumpen
+                if (targetIn.available() > 0) {
+                    int read = targetIn.read(buf);
+                    if (read == -1) {
+                        break; // Ziel hat geschlossen
+                    }
+                    controlOut.write(buf, 0, read);
+                    controlOut.flush();
+                    progressed = true;
+                }
+
+                // Wenn in dieser Iteration nichts passiert ist, kurz schlafen,
+                // damit wir nicht busy-loopen.
+                if (!progressed) {
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
             }
         } catch (IOException e) {
             log("GatewayClient: failed to open local connection to " + targetHost + ":" + targetPort
                     + " -> " + e.getMessage());
+            // Versuchen, dem Server einen Fehler zu signalisieren (best effort)
             try {
-                writer.write("ERROR\r\n");
-                writer.flush();
+                Writer w = new OutputStreamWriter(controlSocket.getOutputStream(), "UTF-8");
+                w.write("ERROR\r\n");
+                w.flush();
             } catch (IOException ignored) {
                 // ignore secondary failure
             }
             throw e;
+        } finally {
+            connected = false;
+            if (view != null) {
+                view.updateGatewayClientStatus("Gateway tunnel closed", false);
+            }
         }
+    }
+
+    boolean isConnected() {
+        return connected;
     }
 
     private void log(String msg) {
