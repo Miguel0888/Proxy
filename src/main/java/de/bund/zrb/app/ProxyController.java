@@ -93,7 +93,9 @@ class ProxyController {
             String gatewayPasskey = view.getServerGatewayPasskey();
             GatewaySessionManager gsm = config.isGatewayEnabled() ? gatewaySessionManager : null;
 
-            server = new LocalProxyServer(port, mitmHandler, outboundProvider, gsm, gatewayPasskey, view);
+            GatewayGate gatewayGate = new GatewayGate(config.isGatewayEnabled());
+
+            server = new LocalProxyServer(port, mitmHandler, outboundProvider, gsm, gatewayPasskey, view, gatewayGate);
             server.start();
         } else {
             // CLIENT mode: connect to remote gateway server in a loop

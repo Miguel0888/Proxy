@@ -17,19 +17,20 @@ public class LocalProxyServer {
     private final GatewaySessionManager gatewaySessionManager;
     private final String gatewayPasskey;
     private final ProxyView view;
+    private final GatewayGate gatewayGate;
 
     private volatile boolean running;
     private ServerSocket serverSocket;
     private Thread acceptThread;
 
     public LocalProxyServer(int listenPort, MitmHandler mitmHandler) {
-        this(listenPort, mitmHandler, new DirectConnectionProvider(15000, 60000), null, null, null);
+        this(listenPort, mitmHandler, new DirectConnectionProvider(15000, 60000), null, null, null, new GatewayGate(false));
     }
 
     public LocalProxyServer(int listenPort,
                             MitmHandler mitmHandler,
                             OutboundConnectionProvider outboundConnectionProvider) {
-        this(listenPort, mitmHandler, outboundConnectionProvider, null, null, null);
+        this(listenPort, mitmHandler, outboundConnectionProvider, null, null, null, new GatewayGate(false));
     }
 
     public LocalProxyServer(int listenPort,
@@ -37,19 +38,25 @@ public class LocalProxyServer {
                             OutboundConnectionProvider outboundConnectionProvider,
                             GatewaySessionManager gatewaySessionManager,
                             String gatewayPasskey,
-                            ProxyView view) {
+                            ProxyView view,
+                            GatewayGate gatewayGate) {
         if (listenPort <= 0 || listenPort > 65535) {
             throw new IllegalArgumentException("listenPort must be between 1 and 65535");
         }
         if (outboundConnectionProvider == null) {
             throw new IllegalArgumentException("outboundConnectionProvider must not be null");
         }
+        if (gatewayGate == null) {
+            throw new IllegalArgumentException("gatewayGate must not be null");
+        }
+
         this.listenPort = listenPort;
         this.mitmHandler = mitmHandler;
         this.outboundConnectionProvider = outboundConnectionProvider;
         this.gatewaySessionManager = gatewaySessionManager;
         this.gatewayPasskey = gatewayPasskey;
         this.view = view;
+        this.gatewayGate = gatewayGate;
     }
 
     public synchronized void start() throws IOException {
@@ -112,7 +119,14 @@ public class LocalProxyServer {
     }
 
     private ProxyConnectionHandler createConnectionHandler() {
-        return new ProxyConnectionHandler(mitmHandler, outboundConnectionProvider, gatewaySessionManager, gatewayPasskey, view);
+        return new ProxyConnectionHandler(
+                mitmHandler,
+                outboundConnectionProvider,
+                gatewaySessionManager,
+                gatewayPasskey,
+                view,
+                gatewayGate
+        );
     }
 
     private void closeServerSocket() {
