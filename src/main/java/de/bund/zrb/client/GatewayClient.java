@@ -39,12 +39,22 @@ public class GatewayClient {
 
     public void run() throws IOException {
         log("GatewayClient connecting to " + host + ":" + port);
-        try (Socket socket = new Socket(host, port)) {
+        
+        Socket socket = null;
+        try {
+            socket = new Socket();
+            socket.connect(new java.net.InetSocketAddress(host, port), 10000); // 10s connect timeout
+            socket.setSoTimeout(30000); // 30s read timeout
+            
+            log("GatewayClient: TCP connection established to " + host + ":" + port);
+            
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
             Writer writer = new OutputStreamWriter(socket.getOutputStream(), "UTF-8");
 
             String passkey = (view != null) ? view.getClientGatewayPasskey() : "";
             passkey = passkey != null ? passkey.trim() : "";
+
+            log("GatewayClient: Sending HELLO with passkey='" + (passkey.isEmpty() ? "(empty)" : "****") + "'");
 
             // HELLO nur mit Passkey (keine ID mehr)
             String hello = passkey.isEmpty()
@@ -54,63 +64,111 @@ public class GatewayClient {
             writer.flush();
 
             // Auf einfache Bestätigung vom Server warten
+            log("GatewayClient: Waiting for server response...");
             String ack = reader.readLine();
-            if (ack == null || !"OK".equalsIgnoreCase(ack.trim())) {
+            
+            if (ack == null) {
+                log("GatewayClient: Server closed connection without response (check if server is in Gateway mode)");
+                if (view != null) {
+                    view.updateGatewayClientStatus("Server closed connection (not in Gateway mode?)", false);
+                }
+                return;
+            }
+            
+            String ackTrimmed = ack.trim();
+            log("GatewayClient: Received response: '" + ackTrimmed + "'");
+            
+            if ("DENIED".equalsIgnoreCase(ackTrimmed)) {
+                log("GatewayClient: HELLO rejected - invalid passkey");
+                if (view != null) {
+                    view.updateGatewayClientStatus("Gateway rejected: invalid passkey", false);
+                }
+                return;
+            }
+            
+            if ("BUSY".equalsIgnoreCase(ackTrimmed)) {
+                log("GatewayClient: HELLO rejected - server busy (another client already connected)");
+                if (view != null) {
+                    view.updateGatewayClientStatus("Gateway busy: another client connected", false);
+                }
+                return;
+            }
+            
+            if (!"OK".equalsIgnoreCase(ackTrimmed)) {
                 log("GatewayClient: HELLO rejected (server replied: " + ack + ")");
                 if (view != null) {
-                    view.updateGatewayClientStatus("Gateway HELLO rejected", false);
+                    view.updateGatewayClientStatus("Gateway HELLO rejected: " + ackTrimmed, false);
                 }
                 return;
             }
 
-            log("GatewayClient: HELLO accepted (server replied: " + ack + ")");
+            log("GatewayClient: HELLO accepted, connection established!");
 
             if (view != null) {
                 view.updateGatewayClientStatus("Gateway client connected to " + host + ":" + port, true);
             }
 
             // Ab hier: bestehendes Protokoll zum Server (CONNECT/HTTP-Kommandos)
-            while (true) {
-                String line = reader.readLine();
-                if (line == null) {
-                    log("GatewayClient: server closed connection");
-                    break;
-                }
-                line = line.trim();
-                if (line.isEmpty()) {
-                    continue;
-                }
-
-                String[] parts = line.split(" ");
-                if (parts.length != 3) {
-                    log("GatewayClient: invalid command: " + line);
-                    break;
-                }
-
-                String cmd = parts[0];
-                String targetHost = parts[1];
-                int targetPort;
-                try {
-                    targetPort = Integer.parseInt(parts[2]);
-                } catch (NumberFormatException e) {
-                    log("GatewayClient: invalid port in command: " + line);
-                    break;
-                }
-
-                if (!"CONNECT".equals(cmd) && !"HTTP".equals(cmd)) {
-                    log("GatewayClient: unknown command: " + cmd);
-                    break;
-                }
-
-                // Einfache Ein-Thread-Lösung: in diesem Thread synchron tunneln.
-                handleConnectSingleThread(socket, targetHost, targetPort);
-                break;
-            }
+            runCommandLoop(socket, reader);
+            
+        } catch (java.net.ConnectException e) {
+            log("GatewayClient: Connection refused to " + host + ":" + port + " - is the server running?");
+            throw new IOException("Connection refused: " + e.getMessage(), e);
+        } catch (java.net.SocketTimeoutException e) {
+            log("GatewayClient: Connection timed out to " + host + ":" + port);
+            throw new IOException("Connection timed out: " + e.getMessage(), e);
+        } catch (java.net.UnknownHostException e) {
+            log("GatewayClient: Unknown host: " + host);
+            throw new IOException("Unknown host: " + host, e);
         } finally {
             connected = false;
+            if (socket != null) {
+                try {
+                    socket.close();
+                } catch (IOException ignored) {}
+            }
             if (view != null) {
                 view.updateGatewayClientStatus("No client connected", false);
             }
+        }
+    }
+    
+    private void runCommandLoop(Socket socket, BufferedReader reader) throws IOException {
+        while (true) {
+            String line = reader.readLine();
+            if (line == null) {
+                log("GatewayClient: server closed connection");
+                break;
+            }
+            line = line.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+
+            String[] parts = line.split(" ");
+            if (parts.length != 3) {
+                log("GatewayClient: invalid command: " + line);
+                break;
+            }
+
+            String cmd = parts[0];
+            String targetHost = parts[1];
+            int targetPort;
+            try {
+                targetPort = Integer.parseInt(parts[2]);
+            } catch (NumberFormatException e) {
+                log("GatewayClient: invalid port in command: " + line);
+                break;
+            }
+
+            if (!"CONNECT".equals(cmd) && !"HTTP".equals(cmd)) {
+                log("GatewayClient: unknown command: " + cmd);
+                break;
+            }
+
+            // Einfache Ein-Thread-Lösung: in diesem Thread synchron tunneln.
+            handleConnectSingleThread(socket, targetHost, targetPort);
+            break;
         }
     }
 

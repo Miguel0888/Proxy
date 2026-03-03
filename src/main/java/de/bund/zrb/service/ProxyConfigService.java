@@ -37,6 +37,11 @@ public class ProxyConfigService {
     private static final String KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT = "proxy.client.outboundProxy.connectTimeoutMillis";
     private static final String KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT = "proxy.client.outboundProxy.handshakeTimeoutMillis";
 
+    // Gateway Authentication
+    private static final String KEY_GATEWAY_AUTH_MODE = "proxy.gateway.authMode";
+    private static final String KEY_GATEWAY_ENCRYPTION_ENABLED = "proxy.gateway.encryption.enabled";
+    private static final String KEY_GATEWAY_USERNAME = "proxy.gateway.username";
+
     public ProxyConfig loadConfig() {
         File file = getConfigFile();
         if (!file.exists()) {
@@ -132,6 +137,20 @@ public class ProxyConfigService {
                 }
             }
 
+            // Gateway Authentication laden
+            String authModeRaw = props.getProperty(KEY_GATEWAY_AUTH_MODE);
+            if (authModeRaw != null) {
+                cfg.setGatewayAuthMode(authModeRaw);
+            }
+            String encryptionEnabledRaw = props.getProperty(KEY_GATEWAY_ENCRYPTION_ENABLED);
+            if (encryptionEnabledRaw != null) {
+                cfg.setGatewayEncryptionEnabled(Boolean.parseBoolean(encryptionEnabledRaw));
+            }
+            String usernameRaw = props.getProperty(KEY_GATEWAY_USERNAME);
+            if (usernameRaw != null) {
+                cfg.setGatewayUsername(usernameRaw);
+            }
+
             return cfg;
         } catch (IOException | NumberFormatException e) {
             return defaultConfig();
@@ -170,6 +189,11 @@ public class ProxyConfigService {
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL, String.valueOf(config.getClientOutboundProxyCacheTtlSeconds()));
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT, String.valueOf(config.getClientOutboundProxyConnectTimeoutMillis()));
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT, String.valueOf(config.getClientOutboundProxyHandshakeTimeoutMillis()));
+
+        // Gateway Authentication speichern
+        props.setProperty(KEY_GATEWAY_AUTH_MODE, config.getGatewayAuthMode());
+        props.setProperty(KEY_GATEWAY_ENCRYPTION_ENABLED, String.valueOf(config.isGatewayEncryptionEnabled()));
+        props.setProperty(KEY_GATEWAY_USERNAME, config.getGatewayUsername());
 
         File file = getConfigFile();
         FileOutputStream out = null;

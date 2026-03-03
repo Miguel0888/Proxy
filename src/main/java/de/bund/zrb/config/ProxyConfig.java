@@ -30,6 +30,11 @@ public class ProxyConfig {
     private int clientOutboundProxyConnectTimeoutMillis = 10000; // 10 seconds
     private int clientOutboundProxyHandshakeTimeoutMillis = 10000; // 10 seconds
 
+    // Gateway Authentication Options
+    private String gatewayAuthMode = "PASSKEY"; // NONE, PASSKEY, TOKEN
+    private boolean gatewayEncryptionEnabled = false;
+    private String gatewayUsername = "";  // Optional username
+
     public ProxyConfig(int port,
                        String keystorePath,
                        boolean mitmEnabled,
@@ -223,5 +228,33 @@ public class ProxyConfig {
         if (millis > 0) {
             this.clientOutboundProxyHandshakeTimeoutMillis = millis;
         }
+    }
+
+    // --- Gateway Authentication ---
+
+    public String getGatewayAuthMode() {
+        return gatewayAuthMode != null ? gatewayAuthMode : "PASSKEY";
+    }
+
+    public void setGatewayAuthMode(String mode) {
+        if (mode != null && (mode.equals("NONE") || mode.equals("PASSKEY") || mode.equals("TOKEN"))) {
+            this.gatewayAuthMode = mode;
+        }
+    }
+
+    public boolean isGatewayEncryptionEnabled() {
+        return gatewayEncryptionEnabled;
+    }
+
+    public void setGatewayEncryptionEnabled(boolean enabled) {
+        this.gatewayEncryptionEnabled = enabled;
+    }
+
+    public String getGatewayUsername() {
+        return gatewayUsername != null ? gatewayUsername : "";
+    }
+
+    public void setGatewayUsername(String username) {
+        this.gatewayUsername = username != null ? username.trim() : "";
     }
 }
