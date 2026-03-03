@@ -15,48 +15,48 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * In direct mode the gate is open from the start.
  */
-final class GatewayGate {
+public final class GatewayGate {
 
     private final boolean gatewayRequired;
     private final AtomicBoolean masterReserved = new AtomicBoolean(false);
     private final AtomicReference<CountDownLatch> readyLatchRef =
             new AtomicReference<CountDownLatch>(new CountDownLatch(1));
 
-    GatewayGate(boolean gatewayRequired) {
+    public GatewayGate(boolean gatewayRequired) {
         this.gatewayRequired = gatewayRequired;
         if (!gatewayRequired) {
             readyLatchRef.get().countDown();
         }
     }
 
-    boolean isGatewayRequired() {
+    public boolean isGatewayRequired() {
         return gatewayRequired;
     }
 
-    boolean isGateOpen() {
+    public boolean isGateOpen() {
         return readyLatchRef.get().getCount() == 0;
     }
 
-    boolean tryReserveMaster() {
+    public boolean tryReserveMaster() {
         return masterReserved.compareAndSet(false, true);
     }
 
-    void releaseMasterReservation() {
+    public void releaseMasterReservation() {
         masterReserved.set(false);
     }
 
-    void openGate() {
+    public void openGate() {
         readyLatchRef.get().countDown();
     }
 
-    void resetGate() {
+    public void resetGate() {
         if (!gatewayRequired) {
             return;
         }
         readyLatchRef.set(new CountDownLatch(1));
     }
 
-    boolean awaitGateOpen(long timeoutMillis) throws InterruptedException {
+    public boolean awaitGateOpen(long timeoutMillis) throws InterruptedException {
         CountDownLatch latch = readyLatchRef.get();
         if (timeoutMillis <= 0) {
             latch.await();

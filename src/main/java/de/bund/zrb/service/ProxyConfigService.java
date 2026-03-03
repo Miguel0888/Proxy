@@ -1,9 +1,12 @@
-package de.bund.zrb;
+package de.bund.zrb.service;
+
+import de.bund.zrb.ProxyMode;
+import de.bund.zrb.config.ProxyConfig;
 
 import java.io.*;
 import java.util.Properties;
 
-class ProxyConfigService {
+public class ProxyConfigService {
 
     private static final String CONFIG_DIR = ".proxy";
     private static final String CONFIG_FILE = "proxy.properties";
@@ -34,7 +37,7 @@ class ProxyConfigService {
     private static final String KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT = "proxy.client.outboundProxy.connectTimeoutMillis";
     private static final String KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT = "proxy.client.outboundProxy.handshakeTimeoutMillis";
 
-    ProxyConfig loadConfig() {
+    public ProxyConfig loadConfig() {
         File file = getConfigFile();
         if (!file.exists()) {
             return defaultConfig();
@@ -137,7 +140,7 @@ class ProxyConfigService {
         }
     }
 
-    void saveConfig(ProxyConfig config) throws IOException {
+    public void saveConfig(ProxyConfig config) throws IOException {
         File dir = getConfigDir();
         if (!dir.exists() && !dir.mkdirs()) {
             throw new IOException("Could not create config directory: " + dir.getAbsolutePath());
@@ -178,12 +181,12 @@ class ProxyConfigService {
         }
     }
 
-    File getConfigDir() {
+    public File getConfigDir() {
         String home = System.getProperty("user.home");
         return new File(home, CONFIG_DIR);
     }
 
-    File getConfigFile() {
+    public File getConfigFile() {
         return new File(getConfigDir(), CONFIG_FILE);
     }
 

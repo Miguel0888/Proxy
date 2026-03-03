@@ -1,5 +1,7 @@
 package de.bund.zrb.client;
 
+import de.bund.zrb.DirectSocketDialer;
+import de.bund.zrb.OutboundSocketDialer;
 import de.bund.zrb.mitm.MitmTrafficListener;
 import de.bund.zrb.common.ProxyView;
 
@@ -18,7 +20,7 @@ public class GatewayClient {
     // Einfaches Flag, ob aktuell ein Tunnel aktiv ist
     private volatile boolean connected;
 
-    GatewayClient(String host,
+    public GatewayClient(String host,
                   int port,
                   String ignoredId, // frühere ID, jetzt ungenutzt
                   MitmTrafficListener trafficListener,

@@ -1,6 +1,8 @@
 package de.bund.zrb.server;
 
-import de.bund.zrb.*;
+import de.bund.zrb.DirectConnectionProvider;
+import de.bund.zrb.GatewayGate;
+import de.bund.zrb.OutboundConnectionProvider;
 import de.bund.zrb.common.ProxyView;
 import de.bund.zrb.mitm.MitmHandler;
 import de.bund.zrb.server.gateway.GatewaySessionManager;

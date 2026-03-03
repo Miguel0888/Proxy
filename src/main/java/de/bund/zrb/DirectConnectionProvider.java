@@ -7,12 +7,12 @@ import java.net.Socket;
 /**
  * Open outbound connections directly without a gateway.
  */
-final class DirectConnectionProvider implements OutboundConnectionProvider {
+public final class DirectConnectionProvider implements OutboundConnectionProvider {
 
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
 
-    DirectConnectionProvider(int connectTimeoutMillis, int readTimeoutMillis) {
+    public DirectConnectionProvider(int connectTimeoutMillis, int readTimeoutMillis) {
         if (connectTimeoutMillis <= 0) {
             throw new IllegalArgumentException("connectTimeoutMillis must be > 0");
         }

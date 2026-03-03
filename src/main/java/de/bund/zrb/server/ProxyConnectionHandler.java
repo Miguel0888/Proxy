@@ -1,4 +1,14 @@
-package de.bund.zrb;
+package de.bund.zrb.server;
+
+import de.bund.zrb.DirectConnectionProvider;
+import de.bund.zrb.GatewayGate;
+import de.bund.zrb.GatewaySession;
+import de.bund.zrb.OutboundConnectionProvider;
+import de.bund.zrb.TunnelPipeTask;
+import de.bund.zrb.common.ProxyView;
+import de.bund.zrb.mitm.MitmHandler;
+import de.bund.zrb.server.gateway.GatewaySessionManager;
+import de.bund.zrb.server.gateway.SocketGatewaySession;
 
 import java.io.*;
 import java.net.Socket;
@@ -414,9 +424,3 @@ public class ProxyConnectionHandler {
     }
 }
 
-interface OutboundConnectionProvider {
-
-    Socket openConnectTunnel(String host, int port) throws IOException;
-
-    Socket openHttpConnection(String host, int port) throws IOException;
-}

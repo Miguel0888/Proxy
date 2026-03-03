@@ -45,7 +45,7 @@ public class SocketGatewaySession implements GatewaySession {
     private String lastTunnelResponse;     // e.g. "OK" or "ERROR" or error text
     private boolean waitingForResponse;
 
-    SocketGatewaySession(String id,
+    public SocketGatewaySession(String id,
                          String remoteAddress,
                          Socket controlSocket,
                          GatewaySessionManager sessionManager,
