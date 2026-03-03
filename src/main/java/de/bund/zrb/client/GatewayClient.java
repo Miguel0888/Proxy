@@ -94,6 +94,15 @@ public class GatewayClient {
                 return;
             }
             
+            if (ackTrimmed.startsWith("ERROR")) {
+                String errorMsg = ackTrimmed.length() > 6 ? ackTrimmed.substring(6).trim() : "Unknown error";
+                log("GatewayClient: Server error - " + errorMsg);
+                if (view != null) {
+                    view.updateGatewayClientStatus("Server error: " + errorMsg, false);
+                }
+                return;
+            }
+            
             if (!"OK".equalsIgnoreCase(ackTrimmed)) {
                 log("GatewayClient: HELLO rejected (server replied: " + ack + ")");
                 if (view != null) {

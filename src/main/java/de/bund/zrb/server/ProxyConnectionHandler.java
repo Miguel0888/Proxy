@@ -70,9 +70,11 @@ public class ProxyConnectionHandler {
 
             InputStream clientIn = clientSocket.getInputStream();
             OutputStream clientOut = clientSocket.getOutputStream();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(clientIn, "ISO-8859-1"));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(clientIn, "UTF-8"));
 
             System.out.println("[Proxy] Handling new connection from " + clientSocket.getRemoteSocketAddress());
+            System.out.println("[Proxy] gatewaySessionManager is " + (gatewaySessionManager != null ? "SET" : "NULL"));
+            System.out.println("[Proxy] gatewayGate.isGatewayRequired() = " + gatewayGate.isGatewayRequired());
 
             String firstLine = reader.readLine();
             if (firstLine == null || firstLine.isEmpty()) {
@@ -81,10 +83,22 @@ public class ProxyConnectionHandler {
             }
 
             System.out.println("[Proxy] First line from " + clientSocket.getRemoteSocketAddress() + ": '" + firstLine + "'");
+            System.out.println("[Proxy] First line starts with HELLO: " + firstLine.startsWith("HELLO"));
+            System.out.println("[Proxy] Will handle as gateway: " + (firstLine.startsWith("HELLO") && gatewaySessionManager != null));
 
             // Gateway client handshake on the same port (HELLO <passkey>)
             if (firstLine.startsWith("HELLO") && gatewaySessionManager != null) {
+                System.out.println("[Proxy] Routing to handleGatewayHello...");
                 handleGatewayHello(firstLine, clientSocket, reader);
+                return;
+            }
+            
+            // HELLO received but Gateway mode is not enabled - send error immediately
+            if (firstLine.startsWith("HELLO") && gatewaySessionManager == null) {
+                System.out.println("[Proxy] HELLO received but Gateway mode is NOT enabled!");
+                System.out.println("[Proxy] Enable 'Route via gateway' on the server to accept gateway clients.");
+                writeLine(clientSocket, "ERROR Gateway mode not enabled on server");
+                closeQuietly(clientSocket);
                 return;
             }
 
