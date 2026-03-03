@@ -1,12 +1,9 @@
-package de.bund.zrb.service;
-
-import de.bund.zrb.config.ProxyConfig;
-import de.bund.zrb.ProxyMode;
+package de.bund.zrb;
 
 import java.io.*;
 import java.util.Properties;
 
-public class ProxyConfigService {
+class ProxyConfigService {
 
     private static final String CONFIG_DIR = ".proxy";
     private static final String CONFIG_FILE = "proxy.properties";
@@ -31,7 +28,13 @@ public class ProxyConfigService {
     private static final String KEY_SERVER_GATEWAY_PASSKEY = "proxy.server.gateway.passkey";
     private static final String KEY_CLIENT_GATEWAY_PASSKEY = "proxy.client.gateway.passkey";
 
-    public ProxyConfig loadConfig() {
+    // WPAD/PAC Proxy Support (Client Mode)
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_ENABLED = "proxy.client.outboundProxy.enabled";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL = "proxy.client.outboundProxy.cacheTtlSeconds";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT = "proxy.client.outboundProxy.connectTimeoutMillis";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT = "proxy.client.outboundProxy.handshakeTimeoutMillis";
+
+    ProxyConfig loadConfig() {
         File file = getConfigFile();
         if (!file.exists()) {
             return defaultConfig();
@@ -95,6 +98,37 @@ public class ProxyConfigService {
             } else {
                 cfg.setShowHelpOnStart(Boolean.parseBoolean(showHelpRaw));
             }
+
+            // WPAD/PAC Proxy Support laden
+            String outboundProxyEnabledRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_ENABLED);
+            if (outboundProxyEnabledRaw != null) {
+                cfg.setClientOutboundProxyEnabled(Boolean.parseBoolean(outboundProxyEnabledRaw));
+            }
+            String cacheTtlRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL);
+            if (cacheTtlRaw != null) {
+                try {
+                    cfg.setClientOutboundProxyCacheTtlSeconds(Integer.parseInt(cacheTtlRaw));
+                } catch (NumberFormatException ignored) {
+                    // ignore
+                }
+            }
+            String connectTimeoutRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT);
+            if (connectTimeoutRaw != null) {
+                try {
+                    cfg.setClientOutboundProxyConnectTimeoutMillis(Integer.parseInt(connectTimeoutRaw));
+                } catch (NumberFormatException ignored) {
+                    // ignore
+                }
+            }
+            String handshakeTimeoutRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT);
+            if (handshakeTimeoutRaw != null) {
+                try {
+                    cfg.setClientOutboundProxyHandshakeTimeoutMillis(Integer.parseInt(handshakeTimeoutRaw));
+                } catch (NumberFormatException ignored) {
+                    // ignore
+                }
+            }
+
             return cfg;
         } catch (IOException | NumberFormatException e) {
             return defaultConfig();
@@ -103,7 +137,7 @@ public class ProxyConfigService {
         }
     }
 
-    public void saveConfig(ProxyConfig config) throws IOException {
+    void saveConfig(ProxyConfig config) throws IOException {
         File dir = getConfigDir();
         if (!dir.exists() && !dir.mkdirs()) {
             throw new IOException("Could not create config directory: " + dir.getAbsolutePath());
@@ -128,6 +162,12 @@ public class ProxyConfigService {
         props.setProperty(KEY_SERVER_GATEWAY_PASSKEY, config.getServerGatewayPasskey());
         props.setProperty(KEY_CLIENT_GATEWAY_PASSKEY, config.getClientGatewayPasskey());
 
+        // WPAD/PAC Proxy Support speichern
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_ENABLED, String.valueOf(config.isClientOutboundProxyEnabled()));
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL, String.valueOf(config.getClientOutboundProxyCacheTtlSeconds()));
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT, String.valueOf(config.getClientOutboundProxyConnectTimeoutMillis()));
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT, String.valueOf(config.getClientOutboundProxyHandshakeTimeoutMillis()));
+
         File file = getConfigFile();
         FileOutputStream out = null;
         try {
@@ -138,16 +178,16 @@ public class ProxyConfigService {
         }
     }
 
-    public File getConfigDir() {
+    File getConfigDir() {
         String home = System.getProperty("user.home");
         return new File(home, CONFIG_DIR);
     }
 
-    public File getConfigFile() {
+    File getConfigFile() {
         return new File(getConfigDir(), CONFIG_FILE);
     }
 
-    public String defaultKeystorePath() {
+    String defaultKeystorePath() {
         return new File(getConfigDir(), "myproxy.jks").getAbsolutePath();
     }
 

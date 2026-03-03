@@ -24,6 +24,12 @@ public class ProxyConfig {
 
     private boolean showHelpOnStart = true;
 
+    // WPAD/PAC Proxy Support (Client Mode)
+    private boolean clientOutboundProxyEnabled = false;
+    private int clientOutboundProxyCacheTtlSeconds = 300; // 5 minutes
+    private int clientOutboundProxyConnectTimeoutMillis = 10000; // 10 seconds
+    private int clientOutboundProxyHandshakeTimeoutMillis = 10000; // 10 seconds
+
     public ProxyConfig(int port,
                        String keystorePath,
                        boolean mitmEnabled,
@@ -177,5 +183,45 @@ public class ProxyConfig {
 
     public void setClientGatewayPasskey(String value) {
         this.clientGatewayPasskey = value != null ? value.trim() : "";
+    }
+
+    // --- WPAD/PAC Proxy Support (Client Mode) ---
+
+    public boolean isClientOutboundProxyEnabled() {
+        return clientOutboundProxyEnabled;
+    }
+
+    public void setClientOutboundProxyEnabled(boolean enabled) {
+        this.clientOutboundProxyEnabled = enabled;
+    }
+
+    public int getClientOutboundProxyCacheTtlSeconds() {
+        return clientOutboundProxyCacheTtlSeconds;
+    }
+
+    public void setClientOutboundProxyCacheTtlSeconds(int seconds) {
+        if (seconds > 0) {
+            this.clientOutboundProxyCacheTtlSeconds = seconds;
+        }
+    }
+
+    public int getClientOutboundProxyConnectTimeoutMillis() {
+        return clientOutboundProxyConnectTimeoutMillis;
+    }
+
+    public void setClientOutboundProxyConnectTimeoutMillis(int millis) {
+        if (millis > 0) {
+            this.clientOutboundProxyConnectTimeoutMillis = millis;
+        }
+    }
+
+    public int getClientOutboundProxyHandshakeTimeoutMillis() {
+        return clientOutboundProxyHandshakeTimeoutMillis;
+    }
+
+    public void setClientOutboundProxyHandshakeTimeoutMillis(int millis) {
+        if (millis > 0) {
+            this.clientOutboundProxyHandshakeTimeoutMillis = millis;
+        }
     }
 }

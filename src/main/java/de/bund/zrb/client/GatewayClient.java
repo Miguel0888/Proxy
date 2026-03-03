@@ -13,6 +13,7 @@ public class GatewayClient {
     private final int port;
     private final MitmTrafficListener trafficListener;
     private final ProxyView view;
+    private final OutboundSocketDialer outboundDialer;
 
     // Einfaches Flag, ob aktuell ein Tunnel aktiv ist
     private volatile boolean connected;
@@ -21,11 +22,17 @@ public class GatewayClient {
                   int port,
                   String ignoredId, // frühere ID, jetzt ungenutzt
                   MitmTrafficListener trafficListener,
-                  ProxyView view) {
+                  ProxyView view,
+                  OutboundSocketDialer outboundDialer) {
         this.host = host;
         this.port = port;
         this.trafficListener = trafficListener;
         this.view = view;
+        this.outboundDialer = outboundDialer != null ? outboundDialer : createDefaultDialer();
+    }
+
+    private static OutboundSocketDialer createDefaultDialer() {
+        return new DirectSocketDialer(10000, 30000);
     }
 
     public void run() throws IOException {
@@ -121,7 +128,11 @@ public class GatewayClient {
             view.updateGatewayClientStatus("Gateway tunnel connected to " + targetHost + ":" + targetPort, true);
         }
 
-        try (Socket target = new Socket(targetHost, targetPort)) {
+        Socket target = null;
+        try {
+            // Use outbound dialer (supports proxy or direct)
+            target = outboundDialer.dial(targetHost, targetPort);
+
             InputStream controlIn = controlSocket.getInputStream();
             OutputStream controlOut = controlSocket.getOutputStream();
             InputStream targetIn = target.getInputStream();
@@ -184,6 +195,14 @@ public class GatewayClient {
             }
             throw e;
         } finally {
+            // Socket schließen
+            if (target != null) {
+                try {
+                    target.close();
+                } catch (IOException ignored) {
+                    // ignore
+                }
+            }
             connected = false;
             if (view != null) {
                 view.updateGatewayClientStatus("Gateway tunnel closed", false);

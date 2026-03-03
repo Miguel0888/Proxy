@@ -109,6 +109,9 @@ class ProxyController {
 
             String gatewayId = "client"; // TODO: configurable id
 
+            // Create outbound dialer for gateway client
+            OutboundSocketDialer outboundDialer = createOutboundDialer(config, trafficListener);
+
             clientRunning = true;
             clientThread = new Thread(() -> {
                 while (clientRunning) {
@@ -128,7 +131,7 @@ class ProxyController {
                     view.updateGatewayClientStatus("Connecting to " + remoteHost + ":" + remotePort, false);
 
                     try {
-                        GatewayClient client = new GatewayClient(remoteHost, remotePort, gatewayId, trafficListener, view);
+                        GatewayClient client = new GatewayClient(remoteHost, remotePort, gatewayId, trafficListener, view, outboundDialer);
                         client.run();
                     } catch (IOException e) {
                         if (trafficListener != null) {
@@ -261,5 +264,49 @@ class ProxyController {
         } catch (IllegalStateException e) {
             throw new IllegalArgumentException("Failed to initialize MITM: " + e.getMessage(), e);
         }
+    }
+
+    private OutboundSocketDialer createOutboundDialer(ProxyConfig config,
+                                                      MitmTrafficListener trafficListener) {
+        if (!config.isClientOutboundProxyEnabled()) {
+            // Direct connection without proxy
+            int connectTimeout = config.getClientOutboundProxyConnectTimeoutMillis();
+            int readTimeout = 30000; // 30 seconds read timeout
+            if (trafficListener != null) {
+                trafficListener.onTraffic("info", "Client outbound: DIRECT connection (no proxy)", false);
+            }
+            return new DirectSocketDialer(connectTimeout, readTimeout);
+        }
+
+        // WPAD/PAC-based proxy resolution
+        if (trafficListener != null) {
+            trafficListener.onTraffic("info", "Client outbound: using Windows system proxy (WPAD/PAC)", false);
+        }
+
+        // Check if Windows
+        String os = System.getProperty("os.name");
+        if (os == null || !os.toLowerCase().contains("win")) {
+            if (trafficListener != null) {
+                trafficListener.onTraffic("warn", "Windows system proxy resolver requested but OS is not Windows. Falling back to DIRECT.", false);
+            }
+            return new DirectSocketDialer(config.getClientOutboundProxyConnectTimeoutMillis(), 30000);
+        }
+
+        // Create Windows resolver
+        File workingDir = configService.getConfigDir();
+        WindowsProxyResolver resolver = new WindowsProxyResolver(
+                workingDir,
+                config.getClientOutboundProxyCacheTtlSeconds(),
+                trafficListener
+        );
+
+        // Create proxy-aware dialer
+        return new ProxySocketDialer(
+                resolver,
+                config.getClientOutboundProxyConnectTimeoutMillis(),
+                config.getClientOutboundProxyHandshakeTimeoutMillis(),
+                30000, // read timeout
+                trafficListener
+        );
     }
 }

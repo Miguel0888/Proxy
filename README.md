@@ -58,6 +58,26 @@ Implementierungsprinzip:
 
 (Die Modellwahl wird perspektivisch über die UI konfigurierbar gemacht.)
 
+### 4. Gateway-Mode (Server/Client für NAT-Traversal)
+
+Der Proxy kann in zwei Modi arbeiten:
+
+- **Server Mode**: Wartet auf eingehende HTTP/HTTPS-Verbindungen und optional auf Gateway-Client-Verbindungen
+- **Client Mode**: Verbindet sich aktiv zu einem Server und tunnelt Outbound-Verbindungen durch den Server
+
+Dies ermöglicht den Einsatz in Netzwerken, wo der Client hinter NAT/Firewall sitzt und nicht direkt erreichbar ist.
+
+**Neu in Client Mode: WPAD/PAC-Proxy-Unterstützung**
+
+Der Client Mode unterstützt jetzt optional die Verwendung von Windows-Systemproxies (WPAD/PAC):
+
+- **Aktivierung**: Via Checkbox in Preferences: "Client: Use Windows system proxy (WPAD/PAC)"
+- **Funktion**: Client-seitige Outbound-Verbindungen werden über den konfigurierten Unternehmensproxy aufgebaut
+- **Fallback**: Unterstützt Proxy-Fallback-Ketten (z.B. PROXY1 → PROXY2 → DIRECT)
+- **Cache**: Proxy-Auflösungen werden für 5 Minuten gecached (konfigurierbar)
+
+Weitere Details siehe [WPAD/PAC-Support-Dokumentation](docs/WPAD-PAC-Support.md).
+
 ---
 
 ## UI: `ProxyControlFrame`
