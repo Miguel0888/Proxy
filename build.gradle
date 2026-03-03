@@ -37,7 +37,16 @@ test {
 jar {
     manifest {
         attributes(
-                'Main-Class': 'de.bund.zrb.ProxyControlFrame' // Die Main-Klasse, die gestartet werden soll
+                'Main-Class': 'de.bund.zrb.app.ProxyControlFrame'
+        )
+    }
+}
+
+shadowJar {
+    archiveClassifier.set('all')
+    manifest {
+        attributes(
+                'Main-Class': 'de.bund.zrb.app.ProxyControlFrame'
         )
     }
 }
