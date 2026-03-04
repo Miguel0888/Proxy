@@ -36,6 +36,7 @@ public class ProxyConfigService {
     private static final String KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL = "proxy.client.outboundProxy.cacheTtlSeconds";
     private static final String KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT = "proxy.client.outboundProxy.connectTimeoutMillis";
     private static final String KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT = "proxy.client.outboundProxy.handshakeTimeoutMillis";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_SCRIPT_PATH = "proxy.client.outboundProxy.scriptPath";
 
     // Gateway Authentication
     private static final String KEY_GATEWAY_AUTH_MODE = "proxy.gateway.authMode";
@@ -140,6 +141,10 @@ public class ProxyConfigService {
                     // ignore
                 }
             }
+            String scriptPathRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_SCRIPT_PATH);
+            if (scriptPathRaw != null) {
+                cfg.setClientOutboundProxyScriptPath(scriptPathRaw);
+            }
 
             // Gateway Authentication laden
             String authModeRaw = props.getProperty(KEY_GATEWAY_AUTH_MODE);
@@ -203,6 +208,7 @@ public class ProxyConfigService {
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL, String.valueOf(config.getClientOutboundProxyCacheTtlSeconds()));
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT, String.valueOf(config.getClientOutboundProxyConnectTimeoutMillis()));
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT, String.valueOf(config.getClientOutboundProxyHandshakeTimeoutMillis()));
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_SCRIPT_PATH, config.getClientOutboundProxyScriptPath());
 
         // Gateway Authentication speichern
         props.setProperty(KEY_GATEWAY_AUTH_MODE, config.getGatewayAuthMode());

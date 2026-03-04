@@ -26,12 +26,18 @@ public final class WindowsProxyResolver implements SystemProxyResolver {
     private final long cacheTtlMillis;
     private final ConcurrentHashMap<String, CacheEntry> cache;
     private final MitmTrafficListener trafficListener;
+    private final String customScriptPath; // Optional custom script path
 
     public WindowsProxyResolver(File workingDir, long cacheTtlSeconds, MitmTrafficListener trafficListener) {
+        this(workingDir, cacheTtlSeconds, trafficListener, null);
+    }
+
+    public WindowsProxyResolver(File workingDir, long cacheTtlSeconds, MitmTrafficListener trafficListener, String customScriptPath) {
         this.workingDir = workingDir;
         this.cacheTtlMillis = TimeUnit.SECONDS.toMillis(cacheTtlSeconds);
         this.cache = new ConcurrentHashMap<String, CacheEntry>();
         this.trafficListener = trafficListener;
+        this.customScriptPath = customScriptPath != null && !customScriptPath.trim().isEmpty() ? customScriptPath.trim() : null;
     }
 
     @Override
@@ -66,14 +72,14 @@ public final class WindowsProxyResolver implements SystemProxyResolver {
     }
 
     private ProxyInfo resolveViaScript(String url) throws IOException {
-        File scriptFile = ensureScriptExtracted();
+        File scriptFile = getScriptFile();
 
         ProcessBuilder pb = new ProcessBuilder(
                 "powershell.exe",
                 "-ExecutionPolicy", "Bypass",
                 "-NoProfile",
                 "-File", scriptFile.getAbsolutePath(),
-                url
+                "-TestUrl", url
         );
         pb.directory(workingDir);
         pb.redirectErrorStream(true);
@@ -95,6 +101,7 @@ public final class WindowsProxyResolver implements SystemProxyResolver {
             throw new IOException("Proxy resolution interrupted for " + url, e);
         }
 
+        // Exit code 0 is success (both for direct and proxy)
         if (exitCode != 0) {
             throw new IOException("Proxy resolution script failed for " + url + " (exit code " + exitCode + "): " + output.toString().trim());
         }
@@ -104,13 +111,17 @@ public final class WindowsProxyResolver implements SystemProxyResolver {
     }
 
     private ProxyInfo parseProxyResult(String result) throws IOException {
+        // Empty output = DIRECT
         if (result == null || result.isEmpty()) {
             return ProxyInfo.direct();
         }
 
-        // PAC can return multiple entries separated by semicolon
-        String[] entries = result.split(";");
+        // New format: just "host:port" (no PROXY prefix)
+        // Also support legacy format with "PROXY host:port" for compatibility
         List<ProxyInfo.ProxyCandidate> candidates = new ArrayList<ProxyInfo.ProxyCandidate>();
+
+        // Split by semicolon for multiple proxies (legacy PAC format)
+        String[] entries = result.split(";");
 
         for (String entry : entries) {
             entry = entry.trim();
@@ -121,6 +132,7 @@ public final class WindowsProxyResolver implements SystemProxyResolver {
             if (entry.equalsIgnoreCase("DIRECT")) {
                 candidates.add(ProxyInfo.ProxyCandidate.direct());
             } else if (entry.toUpperCase().startsWith("PROXY ")) {
+                // Legacy format: "PROXY host:port"
                 String hostPort = entry.substring(6).trim();
                 int colonIdx = hostPort.lastIndexOf(':');
                 if (colonIdx > 0) {
@@ -135,6 +147,7 @@ public final class WindowsProxyResolver implements SystemProxyResolver {
                     throw new IOException("Invalid proxy format (missing port): " + entry);
                 }
             } else if (entry.toUpperCase().startsWith("SOCKS ")) {
+                // Legacy format: "SOCKS host:port"
                 String hostPort = entry.substring(6).trim();
                 int colonIdx = hostPort.lastIndexOf(':');
                 if (colonIdx > 0) {
@@ -149,7 +162,24 @@ public final class WindowsProxyResolver implements SystemProxyResolver {
                     throw new IOException("Invalid SOCKS format (missing port): " + entry);
                 }
             } else {
-                throw new IOException("Unknown proxy entry format: " + entry);
+                // New simple format: just "host:port" (no prefix)
+                int colonIdx = entry.lastIndexOf(':');
+                if (colonIdx > 0) {
+                    String host = entry.substring(0, colonIdx);
+                    try {
+                        int port = Integer.parseInt(entry.substring(colonIdx + 1));
+                        // Assume HTTP proxy for simple format
+                        candidates.add(ProxyInfo.ProxyCandidate.httpProxy(host, port));
+                    } catch (NumberFormatException e) {
+                        // Not a valid host:port, might be an error message - treat as no proxy
+                        log("Warning: Could not parse proxy output: " + entry);
+                        return ProxyInfo.direct();
+                    }
+                } else {
+                    // No colon found - might be an error message or hostname without port
+                    log("Warning: Unknown proxy output format: " + entry);
+                    return ProxyInfo.direct();
+                }
             }
         }
 
@@ -158,6 +188,26 @@ public final class WindowsProxyResolver implements SystemProxyResolver {
         }
 
         return ProxyInfo.fromCandidates(candidates);
+    }
+
+    /**
+     * Returns the script file to use. If a custom script path is configured and exists,
+     * uses that. Otherwise extracts and uses the default embedded script.
+     */
+    private File getScriptFile() throws IOException {
+        // Check for custom script first
+        if (customScriptPath != null) {
+            File customScript = new File(customScriptPath);
+            if (customScript.exists() && customScript.isFile()) {
+                log("Using custom proxy script: " + customScript.getAbsolutePath());
+                return customScript;
+            } else {
+                log("Warning: Custom script not found at " + customScriptPath + ", falling back to default");
+            }
+        }
+        
+        // Use default embedded script
+        return ensureScriptExtracted();
     }
 
     private File ensureScriptExtracted() throws IOException {

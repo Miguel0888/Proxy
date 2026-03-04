@@ -29,6 +29,7 @@ public class ProxyPreferencesDialog extends JDialog {
     
     // Client Outbound Proxy (WPAD/PAC)
     private JCheckBox clientOutboundProxyCheckBox;
+    private JTextField clientOutboundProxyScriptField;
 
     public ProxyPreferencesDialog(Frame owner, ProxyConfigService configService) {
         super(owner, "Preferences", true);
@@ -55,10 +56,12 @@ public class ProxyPreferencesDialog extends JDialog {
         
         // Client Outbound
         clientOutboundProxyCheckBox = new JCheckBox("Use Windows system proxy (WPAD/PAC) for outbound connections");
+        clientOutboundProxyScriptField = new JTextField(30);
 
         // Listeners
         mitmCheckBox.addActionListener(e -> updateControls());
         rewriteCheckBox.addActionListener(e -> updateControls());
+        clientOutboundProxyCheckBox.addActionListener(e -> updateControls());
     }
 
     private void layoutComponents() {
@@ -131,8 +134,18 @@ public class ProxyPreferencesDialog extends JDialog {
         gc.fill = GridBagConstraints.HORIZONTAL;
 
         row = 0;
-        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 2;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 3;
         outboundPanel.add(clientOutboundProxyCheckBox, gc);
+
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 1;
+        outboundPanel.add(new JLabel("Custom Script (optional):"), gc);
+        gc.gridx = 1; gc.weightx = 1.0;
+        outboundPanel.add(clientOutboundProxyScriptField, gc);
+        JButton browseScript = new JButton("Browse...");
+        browseScript.addActionListener(e -> chooseScript());
+        gc.gridx = 2; gc.weightx = 0;
+        outboundPanel.add(browseScript, gc);
 
         mainPanel.add(outboundPanel);
 
@@ -165,6 +178,7 @@ public class ProxyPreferencesDialog extends JDialog {
         
         // Client Outbound
         clientOutboundProxyCheckBox.setSelected(cfg.isClientOutboundProxyEnabled());
+        clientOutboundProxyScriptField.setText(cfg.getClientOutboundProxyScriptPath());
         
         updateControls();
     }
@@ -232,6 +246,7 @@ public class ProxyPreferencesDialog extends JDialog {
         cfg.setClientOutboundProxyCacheTtlSeconds(oldCfg.getClientOutboundProxyCacheTtlSeconds());
         cfg.setClientOutboundProxyConnectTimeoutMillis(oldCfg.getClientOutboundProxyConnectTimeoutMillis());
         cfg.setClientOutboundProxyHandshakeTimeoutMillis(oldCfg.getClientOutboundProxyHandshakeTimeoutMillis());
+        cfg.setClientOutboundProxyScriptPath(clientOutboundProxyScriptField.getText().trim());
         
         // Gateway Auth
         cfg.setGatewayAuthMode(oldCfg.getGatewayAuthMode());
@@ -257,6 +272,10 @@ public class ProxyPreferencesDialog extends JDialog {
         boolean rewrite = mitm && rewriteCheckBox.isSelected();
         rewriteModelField.setEnabled(rewrite);
         rewriteTemperatureField.setEnabled(rewrite);
+        
+        // Script field enabled only when WPAD is enabled
+        boolean wpadEnabled = clientOutboundProxyCheckBox.isSelected();
+        clientOutboundProxyScriptField.setEnabled(wpadEnabled);
     }
 
     private void chooseKeystore() {
@@ -265,6 +284,16 @@ public class ProxyPreferencesDialog extends JDialog {
         int result = chooser.showOpenDialog(this);
         if (result == JFileChooser.APPROVE_OPTION) {
             keystoreField.setText(chooser.getSelectedFile().getAbsolutePath());
+        }
+    }
+
+    private void chooseScript() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Select proxy resolver script (.ps1)");
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("PowerShell Scripts (*.ps1)", "ps1"));
+        int result = chooser.showOpenDialog(this);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            clientOutboundProxyScriptField.setText(chooser.getSelectedFile().getAbsolutePath());
         }
     }
 }

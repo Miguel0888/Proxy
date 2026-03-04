@@ -29,6 +29,7 @@ public class ProxyConfig {
     private int clientOutboundProxyCacheTtlSeconds = 300; // 5 minutes
     private int clientOutboundProxyConnectTimeoutMillis = 10000; // 10 seconds
     private int clientOutboundProxyHandshakeTimeoutMillis = 10000; // 10 seconds
+    private String clientOutboundProxyScriptPath = ""; // Custom script path (empty = use default)
 
     // Gateway Authentication Options
     private String gatewayAuthMode = "PASSKEY"; // NONE, PASSKEY, TOKEN
@@ -234,6 +235,14 @@ public class ProxyConfig {
         if (millis > 0) {
             this.clientOutboundProxyHandshakeTimeoutMillis = millis;
         }
+    }
+
+    public String getClientOutboundProxyScriptPath() {
+        return clientOutboundProxyScriptPath != null ? clientOutboundProxyScriptPath : "";
+    }
+
+    public void setClientOutboundProxyScriptPath(String path) {
+        this.clientOutboundProxyScriptPath = path != null ? path.trim() : "";
     }
 
     // --- Gateway Authentication ---

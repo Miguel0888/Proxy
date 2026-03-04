@@ -317,15 +317,21 @@ class ProxyController {
                 workingDir.mkdirs();
             }
             
+            String customScriptPath = config.getClientOutboundProxyScriptPath();
             WindowsProxyResolver resolver = new WindowsProxyResolver(
                     workingDir,
                     config.getClientOutboundProxyCacheTtlSeconds(),
-                    trafficListener
+                    trafficListener,
+                    customScriptPath.isEmpty() ? null : customScriptPath
             );
 
             // Create proxy-aware dialer
             if (trafficListener != null) {
-                trafficListener.onTraffic("info", "WPAD/PAC proxy resolver initialized successfully", false);
+                if (customScriptPath.isEmpty()) {
+                    trafficListener.onTraffic("info", "WPAD/PAC proxy resolver initialized with default script", false);
+                } else {
+                    trafficListener.onTraffic("info", "WPAD/PAC proxy resolver initialized with custom script: " + customScriptPath, false);
+                }
             }
             
             return new ProxySocketDialer(
