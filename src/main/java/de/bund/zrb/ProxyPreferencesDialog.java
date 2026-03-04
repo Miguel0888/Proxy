@@ -17,6 +17,7 @@ import java.net.URI;
 public class ProxyPreferencesDialog extends JDialog {
 
     private final ProxyConfigService configService;
+    private final Runnable onSaveCallback;
 
     // MITM Settings
     private JTextField keystoreField;
@@ -35,8 +36,13 @@ public class ProxyPreferencesDialog extends JDialog {
     private JTextField clientOutboundProxyTestUrlField;
 
     public ProxyPreferencesDialog(Frame owner, ProxyConfigService configService) {
+        this(owner, configService, null);
+    }
+
+    public ProxyPreferencesDialog(Frame owner, ProxyConfigService configService, Runnable onSaveCallback) {
         super(owner, "Preferences", true);
         this.configService = configService;
+        this.onSaveCallback = onSaveCallback;
 
         initComponents();
         layoutComponents();
@@ -273,6 +279,12 @@ public class ProxyPreferencesDialog extends JDialog {
 
         try {
             configService.saveConfig(cfg);
+            
+            // Callback für Proxy-Restart aufrufen
+            if (onSaveCallback != null) {
+                onSaveCallback.run();
+            }
+            
             dispose();
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "Failed to save config: " + ex.getMessage(), 

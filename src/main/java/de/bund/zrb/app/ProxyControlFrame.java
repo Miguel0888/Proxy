@@ -38,7 +38,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private JToolBar toolBar;
 
     private JButton startStopButton;
-    private JToggleButton modeToggleButton;
     private JTextPane trafficPane;
 
     private JTextField clientHostField;
@@ -65,15 +64,13 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         layoutComponents();
         initActions();
         initPublicIpStatus();
-        loadConfig(); // lädt auch clientHost/clientPort in die Toolbar
+        loadConfig();
         showHelpDialogIfNeeded();
         updateStatus();
         updateRewriteControls();
 
-        // WICHTIG: ab hier sind Host/Port ausschließlich aus der Toolbar maßgeblich
-        if (modeToggleButton.isSelected()) {
-            startClientMode();
-        }
+        // Automatischer Start beim Programmstart
+        autoStartProxy();
     }
 
     private void initComponents() {
@@ -98,8 +95,7 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         clientStatusDotLabel.setForeground(Color.RED);
 
         startStopButton = new JButton("Start proxy");
-        modeToggleButton = new JToggleButton("Server mode");
-        modeToggleButton.setFocusable(false);
+        // Mode-Toggle entfernt - wird automatisch durch IP-Eingabe gesteuert
 
         trafficPane = new JTextPane();
         trafficPane.setContentType("text/html");
@@ -156,18 +152,14 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         toolBar = new JToolBar();
         toolBar.setFloatable(false);
 
-        toolBar.add(modeToggleButton);
-        toolBar.addSeparator();
-        toolBar.add(new JLabel("Target:"));
+        toolBar.add(new JLabel("Remote Gateway:"));
         toolBar.add(clientHostField);
         toolBar.add(clientHostPasteButton);
         toolBar.add(new JLabel(":"));
         toolBar.add(clientPortField);
         toolBar.add(new JLabel("  Passkey:"));
         toolBar.add(gatewayPasskeyField);
-        toolBar.addSeparator();
-        toolBar.add(startStopButton);
-        // no other buttons in the toolbar; MITM actions are triggered via menu only
+        // Start/Stop-Button entfernt - Proxy startet automatisch
     }
 
     private void layoutComponents() {
@@ -202,51 +194,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         setSize(1000, 650);
         setLocationRelativeTo(null);
 
-        startStopButton.addActionListener(e -> toggleProxy());
-        modeToggleButton.addActionListener(e -> {
-            boolean nowClientMode = modeToggleButton.isSelected();
-            updateModeToggleText();
-
-            // Laufende Instanz stoppen
-            controller.stopProxy();
-            updateGatewayClientStatus("No client connected", false);
-            updateStatus();
-
-            // Aktuelle Config laden
-            ProxyConfig cfg = configService.loadConfig();
-
-            if (nowClientMode) {
-                // Letzte SERVER-Werte vor dem Umschalten speichern
-                cfg.setServerPort(clientPortField.getText());
-                cfg.setServerGatewayPasskey(gatewayPasskeyField.getText());
-                try {
-                    configService.saveConfig(cfg);
-                } catch (IOException ignored) {
-                    // wenn Speichern fehlschlägt, bleiben alte Werte erhalten
-                }
-
-                // CLIENT-Mode: Toolbar mit Client-Werten aus Config befüllen
-                clientHostField.setText(cfg.getClientHost());
-                clientPortField.setText(String.valueOf(cfg.getClientPort()));
-                gatewayPasskeyField.setText(cfg.getClientGatewayPasskey());
-            } else {
-                // Letzte CLIENT-Werte vor dem Umschalten speichern
-                cfg.setClientPort(clientPortField.getText());
-                cfg.setClientGatewayPasskey(gatewayPasskeyField.getText());
-                try {
-                    configService.saveConfig(cfg);
-                } catch (IOException ignored) {
-                    // wenn Speichern fehlschlägt, bleiben alte Werte erhalten
-                }
-
-                // SERVER-Mode: Port & Passkey aus Config holen
-                portField.setText(String.valueOf(cfg.getPort()));
-                clientPortField.setText(String.valueOf(cfg.getServerPort()));
-                gatewayPasskeyField.setText(cfg.getServerGatewayPasskey());
-                gatewayCheckBox.setSelected(cfg.isGatewayEnabled());
-            }
-        });
-
         mitmCheckBox.addActionListener(e -> updateRewriteControls());
         rewriteCheckBox.addActionListener(e -> updateRewriteControls());
         publicIpCopyButton.addActionListener(e -> {
@@ -256,21 +203,63 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
 
         clientHostPasteButton.addActionListener(e -> pasteHostFromClipboard());
 
-        // Host/Port-Änderungen in der Toolbar sofort in die Config schreiben
-        clientHostField.addActionListener(e -> saveConfig());
-        clientPortField.addActionListener(e -> saveConfig());
+        // IP-Änderungen: Speichern und Proxy neu starten
+        clientHostField.addActionListener(e -> onRemoteHostChanged());
+        clientPortField.addActionListener(e -> onRemoteHostChanged());
+        gatewayPasskeyField.addActionListener(e -> onRemoteHostChanged());
+        
         clientHostField.addFocusListener(new java.awt.event.FocusAdapter() {
             @Override
             public void focusLost(java.awt.event.FocusEvent e) {
-                saveConfig();
+                onRemoteHostChanged();
             }
         });
         clientPortField.addFocusListener(new java.awt.event.FocusAdapter() {
             @Override
             public void focusLost(java.awt.event.FocusEvent e) {
+                onRemoteHostChanged();
+            }
+        });
+        gatewayPasskeyField.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusLost(java.awt.event.FocusEvent e) {
                 saveConfig();
             }
         });
+    }
+
+    /**
+     * Wird aufgerufen wenn sich die Remote-Host-Eingabe ändert.
+     * Speichert die Config und startet den Proxy neu.
+     */
+    private void onRemoteHostChanged() {
+        if (saveConfig()) {
+            restartProxy();
+        }
+    }
+
+    /**
+     * Automatischer Start des Proxys basierend auf der Konfiguration.
+     * - Leere Remote-IP: Nur Server starten
+     * - Remote-IP gesetzt: Client-Verbindung starten (Server nur wenn Relay-Mode)
+     */
+    private void autoStartProxy() {
+        try {
+            ProxyConfig cfg = configService.loadConfig();
+            controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
+            updateStatus();
+        } catch (Exception e) {
+            appendTraffic("error", "Failed to auto-start proxy: " + e.getMessage(), false);
+        }
+    }
+
+    /**
+     * Stoppt und startet den Proxy neu basierend auf aktueller Konfiguration.
+     */
+    private void restartProxy() {
+        controller.stopProxy();
+        updateGatewayClientStatus("Restarting...", false);
+        autoStartProxy();
     }
 
     private void initPublicIpStatus() {
@@ -356,18 +345,12 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         rewriteTemperatureField.setText(cfg.getRewriteTemperature());
         gatewayCheckBox.setSelected(cfg.isGatewayEnabled());
 
-        ProxyMode mode = cfg.getProxyMode();
-        boolean clientMode = (mode == ProxyMode.CLIENT);
-        modeToggleButton.setSelected(clientMode);
-        updateModeToggleText();
-
-        // Host/Port EINMALIG aus Config in Toolbar laden
-        clientHostField.setText(cfg.getClientHost());
+        // Remote Gateway Host/Port laden
+        clientHostField.setText(cfg.getClientHost() != null ? cfg.getClientHost() : "");
         clientPortField.setText(String.valueOf(cfg.getClientPort()));
-        gatewayPasskeyField.setText(cfg.getGatewayPasskey());
+        gatewayPasskeyField.setText(cfg.getClientGatewayPasskey() != null ? cfg.getClientGatewayPasskey() : "");
 
         updateRewriteControls();
-        updateStartButtonEnabledState();
 
         clientInfoLabel.setText("No client connected");
         clientInfoLabel.setForeground(Color.BLACK);
@@ -377,7 +360,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     private boolean saveConfig() {
         int port = readPortFromField();
         if (port <= 0) {
-            showError("Port must be a number between 1 und 65535.");
             return false;
         }
 
@@ -389,10 +371,11 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
             clientPort = 8888;
         }
 
-        ProxyMode mode = modeToggleButton.isSelected() ? ProxyMode.CLIENT : ProxyMode.SERVER;
-
-        // Load existing config to preserve flags like showHelpOnStart
+        // Load existing config to preserve all settings
         ProxyConfig oldCfg = configService.loadConfig();
+
+        // Mode wird automatisch bestimmt: leere IP = SERVER, sonst CLIENT
+        ProxyMode mode = clientHost.isEmpty() ? ProxyMode.SERVER : ProxyMode.CLIENT;
 
         ProxyConfig cfg = new ProxyConfig(
                 port,
@@ -408,8 +391,27 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
                 gatewayPasskeyField.getText().trim()
         );
 
-        // Preserve "do not show help" flag
+        // Alle anderen Einstellungen übernehmen
         cfg.setShowHelpOnStart(oldCfg.isShowHelpOnStart());
+        cfg.setServerPort(String.valueOf(oldCfg.getServerPort()));
+        cfg.setServerGatewayPasskey(oldCfg.getServerGatewayPasskey());
+        cfg.setClientGatewayPasskey(gatewayPasskeyField.getText().trim());
+        
+        // WPAD/PAC Settings übernehmen
+        cfg.setClientOutboundProxyEnabled(oldCfg.isClientOutboundProxyEnabled());
+        cfg.setClientOutboundProxyCacheTtlSeconds(oldCfg.getClientOutboundProxyCacheTtlSeconds());
+        cfg.setClientOutboundProxyConnectTimeoutMillis(oldCfg.getClientOutboundProxyConnectTimeoutMillis());
+        cfg.setClientOutboundProxyHandshakeTimeoutMillis(oldCfg.getClientOutboundProxyHandshakeTimeoutMillis());
+        cfg.setClientOutboundProxyScriptPath(oldCfg.getClientOutboundProxyScriptPath());
+        
+        // Gateway Auth
+        cfg.setGatewayAuthMode(oldCfg.getGatewayAuthMode());
+        cfg.setGatewayEncryptionEnabled(oldCfg.isGatewayEncryptionEnabled());
+        cfg.setGatewayUsername(oldCfg.getGatewayUsername());
+        
+        // Relay Mode
+        cfg.setRelayModeEnabled(oldCfg.isRelayModeEnabled());
+        cfg.setRemoteGatewayHost(clientHost);
 
         try {
             configService.saveConfig(cfg);
@@ -421,86 +423,15 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     }
 
     private void toggleProxy() {
-        // Start/Stop nur im SERVER-Mode erlaubt
-        if (modeToggleButton.isSelected()) {
-            return;
-        }
-
         if (controller.isProxyRunning()) {
             controller.stopProxy();
-            updateGatewayClientStatus("No client connected", false);
+            updateGatewayClientStatus("Stopped", false);
             updateStatus();
         } else {
-            startProxy();
+            autoStartProxy();
         }
     }
 
-    private void startProxy() {
-        try {
-            // SERVER-Mode: immer Port & Passkey aus Config verwenden, nicht direkt aus der Toolbar
-            ProxyConfig cfg = configService.loadConfig();
-            int port = cfg.getPort();
-            if (port <= 0 || port > 65535) {
-                showError("Port must be a number between 1 and 65535.");
-                return;
-            }
-
-            controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
-
-            updateGatewayClientStatus("No client connected", false);
-            updateStatus();
-        } catch (IllegalArgumentException e) {
-            showError(e.getMessage());
-        } catch (IOException e) {
-            showError("Failed to start proxy: " + e.getMessage());
-        }
-    }
-
-    private void startClientMode() {
-        try {
-            // CLIENT-Mode: ausschließlich Toolbar-Werte verwenden (alter Pfad)
-            int port = readPortFromField();
-            if (port <= 0) {
-                showError("Port must be a number between 1 and 65535.");
-                return;
-            }
-
-            String clientHost = clientHostField.getText().trim();
-            int clientPort;
-            try {
-                clientPort = Integer.parseInt(clientPortField.getText().trim());
-            } catch (NumberFormatException e) {
-                showError("Client port must be a number between 1 and 65535.");
-                return;
-            }
-            if (clientPort <= 0 || clientPort > 65535) {
-                showError("Client port must be a number zwischen 1 und 65535.");
-                return;
-            }
-
-            ProxyConfig cfg = new ProxyConfig(
-                    port,
-                    keystoreField.getText().trim(),
-                    mitmCheckBox.isSelected(),
-                    rewriteCheckBox.isSelected(),
-                    rewriteModelField.getText().trim(),
-                    rewriteTemperatureField.getText().trim(),
-                    gatewayCheckBox.isSelected(),
-                    ProxyMode.CLIENT,
-                    clientHost,
-                    clientPort,
-                    gatewayPasskeyField.getText().trim()
-            );
-
-            controller.stopProxy();
-            controller.startProxy(cfg, (direction, text, isJson) -> appendTraffic(direction, text, isJson));
-
-            updateGatewayClientStatus("Connecting to " + clientHost + ":" + clientPort, false);
-            updateStatus();
-        } catch (Exception e) {
-            showError("Failed to start client mode: " + e.getMessage());
-        }
-    }
 
     @Override
     public void updateGatewayClientStatus(String text, boolean connected) {
@@ -511,20 +442,6 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         });
     }
 
-    private void updateModeToggleText() {
-        if (modeToggleButton.isSelected()) {
-            modeToggleButton.setText("Client mode");
-        } else {
-            modeToggleButton.setText("Server mode");
-        }
-        updateStartButtonEnabledState();
-    }
-
-    private void updateStartButtonEnabledState() {
-        // Start/Stop-Button nur im Server-Mode aktiv
-        boolean serverMode = !modeToggleButton.isSelected();
-        startStopButton.setEnabled(serverMode);
-    }
 
     private boolean isProxyRunning() {
         return controller.isProxyRunning();
