@@ -336,5 +336,82 @@ public class GatewayConnectionTest {
             }
         }
     }
+
+    @Test
+    @Order(8)
+    @DisplayName("Test: Gateway connection stays alive (no timeout)")
+    void testConnectionStaysAlive() throws Exception {
+        System.out.println("\n--- Test: Connection stays alive ---");
+        
+        CountDownLatch connectedLatch = new CountDownLatch(1);
+        CountDownLatch disconnectedLatch = new CountDownLatch(1);
+        AtomicReference<Boolean> wasConnected = new AtomicReference<>(false);
+        AtomicReference<Boolean> wasDisconnected = new AtomicReference<>(false);
+        AtomicReference<String> disconnectReason = new AtomicReference<>("");
+
+        de.bund.zrb.common.ProxyView testView = new de.bund.zrb.common.ProxyView() {
+            @Override
+            public int getServerPort() { return TEST_PORT; }
+            
+            @Override
+            public String getServerGatewayPasskey() { return TEST_PASSKEY; }
+            
+            @Override
+            public String getClientTargetHost() { return "127.0.0.1"; }
+            
+            @Override
+            public int getClientTargetPort() { return TEST_PORT; }
+            
+            @Override
+            public String getClientGatewayPasskey() { return TEST_PASSKEY; }
+            
+            @Override
+            public void updateGatewayClientStatus(String status, boolean connected) {
+                System.out.println("[" + System.currentTimeMillis() + "] Status: " + status + " (connected=" + connected + ")");
+                if (connected && !wasConnected.get()) {
+                    wasConnected.set(true);
+                    connectedLatch.countDown();
+                }
+                if (!connected && wasConnected.get()) {
+                    wasDisconnected.set(true);
+                    disconnectReason.set(status);
+                    disconnectedLatch.countDown();
+                }
+            }
+        };
+
+        // Client starten
+        Thread clientThread = new Thread(() -> {
+            try {
+                de.bund.zrb.client.GatewayClient client = new de.bund.zrb.client.GatewayClient(
+                        "127.0.0.1",
+                        TEST_PORT,
+                        "test-client",
+                        null,
+                        testView,
+                        new DirectSocketDialer(10000, 30000)
+                );
+                client.run();
+            } catch (IOException e) {
+                System.err.println("GatewayClient error: " + e.getMessage());
+            }
+        }, "test-gateway-client-stable");
+        clientThread.setDaemon(true);
+        clientThread.start();
+
+        // Warten auf Verbindung
+        assertTrue(connectedLatch.await(10, TimeUnit.SECONDS), "Should connect within 10 seconds");
+        System.out.println("Connected! Now waiting 35 seconds to verify no timeout...");
+        
+        // 35 Sekunden warten - länger als das alte 30s Timeout
+        boolean disconnected = disconnectedLatch.await(35, TimeUnit.SECONDS);
+        
+        if (disconnected) {
+            fail("Connection was disconnected after " + disconnectReason.get() + 
+                 " - this indicates a timeout problem!");
+        }
+        
+        System.out.println("SUCCESS: Connection stayed alive for 35 seconds without timeout!");
+    }
 }
 

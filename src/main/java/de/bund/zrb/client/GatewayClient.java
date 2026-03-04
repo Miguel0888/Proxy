@@ -117,6 +117,9 @@ public class GatewayClient {
                 view.updateGatewayClientStatus("Gateway client connected to " + host + ":" + port, true);
             }
 
+            // Timeout deaktivieren - wir warten unbegrenzt auf Befehle vom Server
+            socket.setSoTimeout(0);
+
             // Ab hier: bestehendes Protokoll zum Server (CONNECT/HTTP-Kommandos)
             runCommandLoop(socket, reader);
             

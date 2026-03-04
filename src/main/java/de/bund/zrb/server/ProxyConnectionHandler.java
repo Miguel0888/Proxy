@@ -206,6 +206,13 @@ public class ProxyConnectionHandler {
         writeLine(socket, "OK");
         System.out.println("[Proxy] Sent OK to gateway client " + socket.getRemoteSocketAddress());
 
+        // Timeout deaktivieren - Gateway-Verbindung soll unbegrenzt bestehen bleiben
+        try {
+            socket.setSoTimeout(0);
+        } catch (IOException e) {
+            System.out.println("[Proxy] Warning: Could not disable socket timeout: " + e.getMessage());
+        }
+
         if (gatewaySessionManager != null) {
             SocketGatewaySession session = new SocketGatewaySession(
                     "gateway-client",
