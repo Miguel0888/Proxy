@@ -35,6 +35,12 @@ public class ProxyConfig {
     private boolean gatewayEncryptionEnabled = false;
     private String gatewayUsername = "";  // Optional username
 
+    // Relay Mode: Server bleibt aktiv auch wenn sich zu anderem Server verbunden wird
+    private boolean relayModeEnabled = false;
+    
+    // Remote Gateway Host (leer = nur Server-Mode, nicht-leer = auch Client-Mode)
+    private String remoteGatewayHost = "";
+
     public ProxyConfig(int port,
                        String keystorePath,
                        boolean mitmEnabled,
@@ -256,5 +262,41 @@ public class ProxyConfig {
 
     public void setGatewayUsername(String username) {
         this.gatewayUsername = username != null ? username.trim() : "";
+    }
+
+    // --- Relay Mode ---
+
+    public boolean isRelayModeEnabled() {
+        return relayModeEnabled;
+    }
+
+    public void setRelayModeEnabled(boolean enabled) {
+        this.relayModeEnabled = enabled;
+    }
+
+    // --- Remote Gateway Host ---
+
+    public String getRemoteGatewayHost() {
+        return remoteGatewayHost != null ? remoteGatewayHost.trim() : "";
+    }
+
+    public void setRemoteGatewayHost(String host) {
+        this.remoteGatewayHost = host != null ? host.trim() : "";
+    }
+
+    /**
+     * Determines if this proxy should act as a client (connect to remote gateway).
+     * True if remoteGatewayHost is not empty.
+     */
+    public boolean shouldConnectToRemote() {
+        return remoteGatewayHost != null && !remoteGatewayHost.trim().isEmpty();
+    }
+
+    /**
+     * Determines if local server should be active.
+     * True if relayModeEnabled OR no remote gateway is configured.
+     */
+    public boolean shouldRunLocalServer() {
+        return relayModeEnabled || !shouldConnectToRemote();
     }
 }

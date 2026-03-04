@@ -42,6 +42,10 @@ public class ProxyConfigService {
     private static final String KEY_GATEWAY_ENCRYPTION_ENABLED = "proxy.gateway.encryption.enabled";
     private static final String KEY_GATEWAY_USERNAME = "proxy.gateway.username";
 
+    // Relay Mode and Remote Gateway
+    private static final String KEY_RELAY_MODE_ENABLED = "proxy.relay.enabled";
+    private static final String KEY_REMOTE_GATEWAY_HOST = "proxy.remote.gateway.host";
+
     public ProxyConfig loadConfig() {
         File file = getConfigFile();
         if (!file.exists()) {
@@ -151,6 +155,16 @@ public class ProxyConfigService {
                 cfg.setGatewayUsername(usernameRaw);
             }
 
+            // Relay Mode and Remote Gateway laden
+            String relayModeRaw = props.getProperty(KEY_RELAY_MODE_ENABLED);
+            if (relayModeRaw != null) {
+                cfg.setRelayModeEnabled(Boolean.parseBoolean(relayModeRaw));
+            }
+            String remoteGatewayHostRaw = props.getProperty(KEY_REMOTE_GATEWAY_HOST);
+            if (remoteGatewayHostRaw != null) {
+                cfg.setRemoteGatewayHost(remoteGatewayHostRaw);
+            }
+
             return cfg;
         } catch (IOException | NumberFormatException e) {
             return defaultConfig();
@@ -194,6 +208,10 @@ public class ProxyConfigService {
         props.setProperty(KEY_GATEWAY_AUTH_MODE, config.getGatewayAuthMode());
         props.setProperty(KEY_GATEWAY_ENCRYPTION_ENABLED, String.valueOf(config.isGatewayEncryptionEnabled()));
         props.setProperty(KEY_GATEWAY_USERNAME, config.getGatewayUsername());
+
+        // Relay Mode and Remote Gateway speichern
+        props.setProperty(KEY_RELAY_MODE_ENABLED, String.valueOf(config.isRelayModeEnabled()));
+        props.setProperty(KEY_REMOTE_GATEWAY_HOST, config.getRemoteGatewayHost());
 
         File file = getConfigFile();
         FileOutputStream out = null;

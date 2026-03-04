@@ -59,9 +59,17 @@ class ProxyController {
             throw new IllegalArgumentException("config must not be null.");
         }
 
-        ProxyMode mode = config.getProxyMode();
-        if (mode == ProxyMode.SERVER) {
-            // SERVER: Port und Passkey aus View (Server-spezifisch) holen
+        // Neue vereinfachte Logik:
+        // - remoteHost leer = nur Server-Mode
+        // - remoteHost gesetzt = Client-Mode (und Server wenn relayMode aktiv)
+        String remoteHost = view.getClientTargetHost();
+        int remotePort = view.getClientTargetPort();
+        boolean hasRemoteTarget = remoteHost != null && !remoteHost.trim().isEmpty();
+        boolean shouldRunServer = !hasRemoteTarget || config.isRelayModeEnabled();
+        boolean shouldRunClient = hasRemoteTarget;
+
+        // Server starten wenn nötig
+        if (shouldRunServer) {
             int port = view.getServerPort();
             if (port <= 0 || port > 65535) {
                 throw new IllegalArgumentException("Port must be between 1 and 65535.");
@@ -75,7 +83,7 @@ class ProxyController {
                 if (trafficListener != null) {
                     trafficListener.onTraffic(
                             "info",
-                            "Starting proxy in SERVER + GATEWAY mode (waiting for gateway client connection)",
+                            "Starting local proxy server on port " + port + " (gateway mode enabled)",
                             false
                     );
                 }
@@ -84,7 +92,7 @@ class ProxyController {
                 if (trafficListener != null) {
                     trafficListener.onTraffic(
                             "info",
-                            "Starting proxy in SERVER + DIRECT mode",
+                            "Starting local proxy server on port " + port + " (direct mode)",
                             false
                     );
                 }
@@ -92,33 +100,43 @@ class ProxyController {
 
             String gatewayPasskey = view.getServerGatewayPasskey();
             GatewaySessionManager gsm = config.isGatewayEnabled() ? gatewaySessionManager : null;
-
             GatewayGate gatewayGate = new GatewayGate(config.isGatewayEnabled());
 
             server = new LocalProxyServer(port, mitmHandler, outboundProvider, gsm, gatewayPasskey, view, gatewayGate);
             server.start();
-        } else {
-            // CLIENT mode: connect to remote gateway server in a loop
+        }
+
+        // Client starten wenn Remote-Ziel konfiguriert
+        if (shouldRunClient) {
             if (trafficListener != null) {
                 trafficListener.onTraffic(
                         "info",
-                        "Starting proxy in CLIENT mode (connecting to remote gateway)",
+                        "Connecting to remote gateway: " + remoteHost + ":" + remotePort,
                         false
                 );
             }
 
-            String gatewayId = "client"; // TODO: configurable id
-
-            // Create outbound dialer for gateway client
+            String gatewayId = "client";
             OutboundSocketDialer outboundDialer = createOutboundDialer(config, trafficListener);
 
             clientRunning = true;
             clientThread = new Thread(() -> {
                 while (clientRunning) {
-                    String remoteHost = view.getClientTargetHost();
-                    int remotePort = view.getClientTargetPort();
-                    if (remoteHost == null || remoteHost.isEmpty() || remotePort <= 0 || remotePort > 65535) {
-                        view.updateGatewayClientStatus("Invalid client target (" + remoteHost + ":" + remotePort + ")", false);
+                    // Remote-Ziel erneut von View holen (könnte sich geändert haben)
+                    String currentRemoteHost = view.getClientTargetHost();
+                    int currentRemotePort = view.getClientTargetPort();
+                    
+                    // Leere IP = Client stoppen
+                    if (currentRemoteHost == null || currentRemoteHost.trim().isEmpty()) {
+                        if (trafficListener != null) {
+                            trafficListener.onTraffic("info", "Remote host cleared, stopping client connection", false);
+                        }
+                        view.updateGatewayClientStatus("No remote host configured", false);
+                        break;
+                    }
+                    
+                    if (currentRemotePort <= 0 || currentRemotePort > 65535) {
+                        view.updateGatewayClientStatus("Invalid port: " + currentRemotePort, false);
                         try {
                             Thread.sleep(2000L);
                         } catch (InterruptedException e) {
@@ -128,16 +146,16 @@ class ProxyController {
                         continue;
                     }
 
-                    view.updateGatewayClientStatus("Connecting to " + remoteHost + ":" + remotePort, false);
+                    view.updateGatewayClientStatus("Connecting to " + currentRemoteHost + ":" + currentRemotePort, false);
 
                     try {
-                        GatewayClient client = new GatewayClient(remoteHost, remotePort, gatewayId, trafficListener, view, outboundDialer);
+                        GatewayClient client = new GatewayClient(currentRemoteHost, currentRemotePort, gatewayId, trafficListener, view, outboundDialer);
                         client.run();
                     } catch (IOException e) {
                         if (trafficListener != null) {
                             trafficListener.onTraffic("info", "GatewayClient error: " + e.getMessage(), false);
                         }
-                        view.updateGatewayClientStatus("Connection failed to " + remoteHost + ":" + remotePort, false);
+                        view.updateGatewayClientStatus("Connection failed to " + currentRemoteHost + ":" + currentRemotePort, false);
                     }
 
                     if (!clientRunning) {
