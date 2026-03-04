@@ -310,21 +310,39 @@ class ProxyController {
             return new DirectSocketDialer(config.getClientOutboundProxyConnectTimeoutMillis(), 30000);
         }
 
-        // Create Windows resolver
-        File workingDir = configService.getConfigDir();
-        WindowsProxyResolver resolver = new WindowsProxyResolver(
-                workingDir,
-                config.getClientOutboundProxyCacheTtlSeconds(),
-                trafficListener
-        );
+        // Create Windows resolver with error handling
+        try {
+            File workingDir = configService.getConfigDir();
+            if (!workingDir.exists()) {
+                workingDir.mkdirs();
+            }
+            
+            WindowsProxyResolver resolver = new WindowsProxyResolver(
+                    workingDir,
+                    config.getClientOutboundProxyCacheTtlSeconds(),
+                    trafficListener
+            );
 
-        // Create proxy-aware dialer
-        return new ProxySocketDialer(
-                resolver,
-                config.getClientOutboundProxyConnectTimeoutMillis(),
-                config.getClientOutboundProxyHandshakeTimeoutMillis(),
-                30000, // read timeout
-                trafficListener
-        );
+            // Create proxy-aware dialer
+            if (trafficListener != null) {
+                trafficListener.onTraffic("info", "WPAD/PAC proxy resolver initialized successfully", false);
+            }
+            
+            return new ProxySocketDialer(
+                    resolver,
+                    config.getClientOutboundProxyConnectTimeoutMillis(),
+                    config.getClientOutboundProxyHandshakeTimeoutMillis(),
+                    30000, // read timeout
+                    trafficListener
+            );
+        } catch (Exception e) {
+            // Fallback to direct connection on any error
+            if (trafficListener != null) {
+                trafficListener.onTraffic("error", "Failed to initialize WPAD/PAC resolver: " + e.getMessage() + ". Falling back to DIRECT.", false);
+            }
+            System.err.println("[ProxyController] Failed to initialize WPAD/PAC resolver: " + e.getMessage());
+            e.printStackTrace();
+            return new DirectSocketDialer(config.getClientOutboundProxyConnectTimeoutMillis(), 30000);
+        }
     }
 }
