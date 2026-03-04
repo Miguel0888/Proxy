@@ -792,7 +792,10 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
     }
 
     private void openPreferencesDialog() {
-        ProxyPreferencesDialog dialog = new ProxyPreferencesDialog(this, configService);
+        ProxyPreferencesDialog dialog = new ProxyPreferencesDialog(this, configService, () -> {
+            // Callback: Nach dem Speichern Proxy automatisch neu starten
+            restartProxy();
+        });
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
 
