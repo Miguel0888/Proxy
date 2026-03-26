@@ -403,7 +403,11 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         cfg.setClientOutboundProxyHost(oldCfg.getClientOutboundProxyHost());
         cfg.setClientOutboundProxyPort(oldCfg.getClientOutboundProxyPort());
         cfg.setClientOutboundProxyPacUrl(oldCfg.getClientOutboundProxyPacUrl());
+        cfg.setClientOutboundProxyPacUrlFromScript(oldCfg.isClientOutboundProxyPacUrlFromScript());
         cfg.setClientOutboundProxyBypassList(oldCfg.getClientOutboundProxyBypassList());
+        cfg.setClientOutboundProxyNoProxyLocal(oldCfg.isClientOutboundProxyNoProxyLocal());
+        cfg.setClientOutboundProxyPacScript(oldCfg.getClientOutboundProxyPacScript());
+        cfg.setClientOutboundProxyTestUrl(oldCfg.getClientOutboundProxyTestUrl());
         cfg.setClientOutboundProxyPacSource(oldCfg.getClientOutboundProxyPacSource());
         cfg.setClientOutboundProxyCacheTtlSeconds(oldCfg.getClientOutboundProxyCacheTtlSeconds());
         cfg.setClientOutboundProxyConnectTimeoutMillis(oldCfg.getClientOutboundProxyConnectTimeoutMillis());

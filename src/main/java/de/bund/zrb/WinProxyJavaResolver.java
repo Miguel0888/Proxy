@@ -300,6 +300,11 @@ public final class WinProxyJavaResolver implements SystemProxyResolver {
     private static ResolveMode parseMode(String raw) {
         if (raw == null) return ResolveMode.AUTO;
         String upper = raw.trim().toUpperCase();
+        // New mode names (matching MainframeMate Settings > Proxy)
+        if ("WINDOWS_PAC".equals(upper)) return ResolveMode.AUTO;
+        if ("REGISTRY".equals(upper)) return ResolveMode.AUTO;
+        if ("MANUAL".equals(upper)) return ResolveMode.STATIC;
+        // Original mode names (backward compatibility)
         if ("STATIC".equals(upper)) return ResolveMode.STATIC;
         if ("PAC_URL".equals(upper)) return ResolveMode.PAC_URL;
         return ResolveMode.AUTO;

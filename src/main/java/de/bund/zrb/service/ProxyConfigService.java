@@ -43,6 +43,10 @@ public class ProxyConfigService {
     private static final String KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT = "proxy.client.outboundProxy.connectTimeoutMillis";
     private static final String KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT = "proxy.client.outboundProxy.handshakeTimeoutMillis";
     private static final String KEY_CLIENT_OUTBOUND_PROXY_SCRIPT_PATH = "proxy.client.outboundProxy.scriptPath"; // legacy, ignored
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_PAC_URL_FROM_SCRIPT = "proxy.client.outboundProxy.pacUrlFromScript";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_NO_PROXY_LOCAL = "proxy.client.outboundProxy.noProxyLocal";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_PAC_SCRIPT = "proxy.client.outboundProxy.pacScript";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_TEST_URL = "proxy.client.outboundProxy.testUrl";
 
     // Gateway Authentication
     private static final String KEY_GATEWAY_AUTH_MODE = "proxy.gateway.authMode";
@@ -145,6 +149,22 @@ public class ProxyConfigService {
             if (outboundProxyBypassRaw != null) {
                 cfg.setClientOutboundProxyBypassList(outboundProxyBypassRaw);
             }
+            String outboundProxyPacUrlFromScriptRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_URL_FROM_SCRIPT);
+            if (outboundProxyPacUrlFromScriptRaw != null) {
+                cfg.setClientOutboundProxyPacUrlFromScript(Boolean.parseBoolean(outboundProxyPacUrlFromScriptRaw));
+            }
+            String outboundProxyNoProxyLocalRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_NO_PROXY_LOCAL);
+            if (outboundProxyNoProxyLocalRaw != null) {
+                cfg.setClientOutboundProxyNoProxyLocal(Boolean.parseBoolean(outboundProxyNoProxyLocalRaw));
+            }
+            String outboundProxyPacScriptRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_SCRIPT);
+            if (outboundProxyPacScriptRaw != null) {
+                cfg.setClientOutboundProxyPacScript(outboundProxyPacScriptRaw);
+            }
+            String outboundProxyTestUrlRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_TEST_URL);
+            if (outboundProxyTestUrlRaw != null) {
+                cfg.setClientOutboundProxyTestUrl(outboundProxyTestUrlRaw);
+            }
             String outboundProxyPacSourceRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_SOURCE);
             if (outboundProxyPacSourceRaw != null) {
                 cfg.setClientOutboundProxyPacSource(outboundProxyPacSourceRaw);
@@ -233,6 +253,10 @@ public class ProxyConfigService {
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_PORT, String.valueOf(config.getClientOutboundProxyPort()));
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_URL, config.getClientOutboundProxyPacUrl());
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_BYPASS_LIST, config.getClientOutboundProxyBypassList());
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_URL_FROM_SCRIPT, String.valueOf(config.isClientOutboundProxyPacUrlFromScript()));
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_NO_PROXY_LOCAL, String.valueOf(config.isClientOutboundProxyNoProxyLocal()));
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_SCRIPT, config.getClientOutboundProxyPacScript());
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_TEST_URL, config.getClientOutboundProxyTestUrl());
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_SOURCE, config.getClientOutboundProxyPacSource());
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL, String.valueOf(config.getClientOutboundProxyCacheTtlSeconds()));
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT, String.valueOf(config.getClientOutboundProxyConnectTimeoutMillis()));

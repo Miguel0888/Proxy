@@ -7,8 +7,6 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
-import java.io.File;
-import java.net.URI;
 
 /**
  * Preferences dialog for proxy configuration.
@@ -30,23 +28,27 @@ public class ProxyPreferencesDialog extends JDialog {
     private JCheckBox gatewayCheckBox;
     private JCheckBox relayModeCheckBox;
     
-    // Client Outbound Proxy (Windows System Proxy via win-proxy-java)
+    // Client Outbound Proxy (matching MainframeMate Settings > Proxy)
     private JCheckBox clientOutboundProxyCheckBox;
-    private JComboBox<String> proxyModeBox;           // AUTO, STATIC, PAC_URL
-    private JTextField staticProxyHostField;
-    private JSpinner staticProxyPortSpinner;
+    private JComboBox<String> proxyModeBox;           // WINDOWS_PAC, REGISTRY, PAC_URL, MANUAL
+    private JLabel proxyHostLabel;
+    private JTextField proxyHostField;
+    private JLabel proxyPortLabel;
+    private JSpinner proxyPortSpinner;
+    private JCheckBox proxyNoProxyLocalBox;
+    private JTextArea proxyPacScriptArea;
+    private JScrollPane pacScrollPane;
+    private JLabel pacSectionLabel;
+    private JLabel pacUrlLabel;
     private JTextField pacUrlField;
-    private JTextField bypassListField;
-    private JTextField staticBypassListField;          // separate bypass field for STATIC card
-    private JComboBox<String> pacSourceBox;            // REGISTRY, POWERSHELL, DIRECT
+    private JCheckBox pacUrlFromScriptBox;
+    private JLabel proxyTestUrlLabel;
+    private JTextField proxyTestUrlField;
+    private JButton proxyTestButton;
+    private JButton resetScriptButton;
     private JSpinner cacheTtlSpinner;
     private JSpinner connectTimeoutSpinner;
     private JSpinner handshakeTimeoutSpinner;
-    private JTextField clientOutboundProxyTestUrlField;
-
-    // Card layout for mode-specific panels
-    private JPanel modeCardsPanel;
-    private CardLayout modeCardLayout;
 
     public ProxyPreferencesDialog(Frame owner, ProxyConfigService configService) {
         this(owner, configService, null);
@@ -76,19 +78,42 @@ public class ProxyPreferencesDialog extends JDialog {
         gatewayCheckBox = new JCheckBox("Accept gateway client connections (required for reverse proxy)");
         relayModeCheckBox = new JCheckBox("Relay mode: Keep local server running when connected to remote");
         
-        // Client Outbound Proxy (win-proxy-java)
-        clientOutboundProxyCheckBox = new JCheckBox("Windows Systemproxy für ausgehende Verbindungen verwenden");
-        proxyModeBox = new JComboBox<String>(new String[]{"AUTO", "STATIC", "PAC_URL"});
-        staticProxyHostField = new JTextField(20);
-        staticProxyPortSpinner = new JSpinner(new SpinnerNumberModel(8080, 1, 65535, 1));
-        pacUrlField = new JTextField(30);
-        bypassListField = new JTextField(30);
-        staticBypassListField = new JTextField(30);
-        pacSourceBox = new JComboBox<String>(new String[]{"REGISTRY", "POWERSHELL", "DIRECT"});
+        // Client Outbound Proxy (matching MainframeMate Settings > Proxy)
+        clientOutboundProxyCheckBox = new JCheckBox("Proxy für ausgehende Verbindungen verwenden");
+        proxyModeBox = new JComboBox<String>(new String[]{"WINDOWS_PAC", "REGISTRY", "PAC_URL", "MANUAL"});
+        proxyModeBox.setToolTipText("<html>" +
+                "<b>WINDOWS_PAC</b> — PowerShell PAC/WPAD-Script (anpassbar).<br>" +
+                "<b>REGISTRY</b> — Proxy aus der Windows Registry (kein PowerShell nötig).<br>" +
+                "<b>PAC_URL</b> — PAC-Datei von einer expliziten URL laden und auswerten.<br>" +
+                "<b>MANUAL</b> — Fester Proxy-Host und -Port." +
+                "</html>");
+        proxyHostLabel = new JLabel("Proxy Host:");
+        proxyHostField = new JTextField(24);
+        proxyPortLabel = new JLabel("Proxy Port:");
+        proxyPortSpinner = new JSpinner(new SpinnerNumberModel(8080, 1, 65535, 1));
+        proxyNoProxyLocalBox = new JCheckBox("Lokale Ziele niemals über Proxy");
+        proxyNoProxyLocalBox.setSelected(true);
+
+        pacUrlFromScriptBox = new JCheckBox("URL per PowerShell-Script beziehen");
+        pacUrlLabel = new JLabel("PAC-URL:");
+        pacUrlField = new JTextField(40);
+        
+        pacSectionLabel = new JLabel("PAC / WPAD Script");
+        pacSectionLabel.setFont(pacSectionLabel.getFont().deriveFont(Font.BOLD, pacSectionLabel.getFont().getSize2D() + 1f));
+        proxyPacScriptArea = new JTextArea(12, 60);
+        proxyPacScriptArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        pacScrollPane = new JScrollPane(proxyPacScriptArea);
+
+        resetScriptButton = new JButton("Standard-Script laden");
+        resetScriptButton.setToolTipText("Setzt das PAC/WPAD-Script auf die Werkseinstellung zurück");
+
+        proxyTestUrlLabel = new JLabel("Test-URL:");
+        proxyTestUrlField = new JTextField("https://plugins.gradle.org/m2/", 30);
+        proxyTestButton = new JButton("Testen");
+
         cacheTtlSpinner = new JSpinner(new SpinnerNumberModel(300, 1, 86400, 10));
         connectTimeoutSpinner = new JSpinner(new SpinnerNumberModel(10000, 500, 120000, 500));
         handshakeTimeoutSpinner = new JSpinner(new SpinnerNumberModel(10000, 500, 120000, 500));
-        clientOutboundProxyTestUrlField = new JTextField("https://www.google.com/", 30);
 
         // Listeners
         mitmCheckBox.addActionListener(e -> updateControls());
@@ -158,9 +183,9 @@ public class ProxyPreferencesDialog extends JDialog {
 
         mainPanel.add(gatewayPanel);
 
-        // === Client Outbound Panel (FULL win-proxy-java settings) ===
+        // === Client Outbound Proxy Panel (matching MainframeMate Settings > Proxy) ===
         JPanel outboundPanel = new JPanel(new GridBagLayout());
-        outboundPanel.setBorder(new TitledBorder("Client Outbound Proxy (win-proxy-java)"));
+        outboundPanel.setBorder(new TitledBorder("Ausgehender Proxy (Outbound)"));
         gc = new GridBagConstraints();
         gc.insets = new Insets(3, 4, 3, 4);
         gc.anchor = GridBagConstraints.WEST;
@@ -168,74 +193,68 @@ public class ProxyPreferencesDialog extends JDialog {
 
         row = 0;
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
+        JLabel infoLabel = new JLabel("<html><i>Proxy-Konfiguration für ausgehende Verbindungen.</i></html>");
+        infoLabel.setForeground(Color.GRAY);
+        outboundPanel.add(infoLabel, gc);
+
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
         outboundPanel.add(clientOutboundProxyCheckBox, gc);
 
         // Proxy mode
         row++;
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 1; gc.weightx = 0;
         outboundPanel.add(new JLabel("Proxy-Modus:"), gc);
-        gc.gridx = 1; gc.gridwidth = 1; gc.weightx = 0;
+        gc.gridx = 1; gc.gridwidth = 3; gc.weightx = 1.0;
         outboundPanel.add(proxyModeBox, gc);
-        gc.gridx = 2; gc.gridwidth = 2; gc.weightx = 1.0;
-        JLabel modeHintLabel = new JLabel("<html><small><i>AUTO=Windows System, STATIC=Manuell, PAC_URL=PAC auswerten</i></small></html>");
-        outboundPanel.add(modeHintLabel, gc);
 
-        // -- Mode-specific cards --
-        modeCardLayout = new CardLayout();
-        modeCardsPanel = new JPanel(modeCardLayout);
+        // MANUAL-only: Host / Port
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 1; gc.weightx = 0;
+        outboundPanel.add(proxyHostLabel, gc);
+        gc.gridx = 1; gc.gridwidth = 3; gc.weightx = 1.0;
+        outboundPanel.add(proxyHostField, gc);
 
-        // AUTO card (PAC source + bypass)
-        JPanel autoCard = new JPanel(new GridBagLayout());
-        GridBagConstraints ac = new GridBagConstraints();
-        ac.insets = new Insets(2, 4, 2, 4);
-        ac.anchor = GridBagConstraints.WEST;
-        ac.fill = GridBagConstraints.HORIZONTAL;
-        ac.gridy = 0; ac.gridx = 0; ac.weightx = 0;
-        autoCard.add(new JLabel("PAC-Quelle:"), ac);
-        ac.gridx = 1; ac.weightx = 1.0;
-        autoCard.add(pacSourceBox, ac);
-        ac.gridy = 1; ac.gridx = 0; ac.weightx = 0;
-        autoCard.add(new JLabel("Bypass-Liste:"), ac);
-        ac.gridx = 1; ac.weightx = 1.0;
-        autoCard.add(bypassListField, ac);
-
-        // STATIC card (host + port)
-        JPanel staticCard = new JPanel(new GridBagLayout());
-        GridBagConstraints sc = new GridBagConstraints();
-        sc.insets = new Insets(2, 4, 2, 4);
-        sc.anchor = GridBagConstraints.WEST;
-        sc.fill = GridBagConstraints.HORIZONTAL;
-        sc.gridy = 0; sc.gridx = 0; sc.weightx = 0;
-        staticCard.add(new JLabel("Proxy Host:"), sc);
-        sc.gridx = 1; sc.weightx = 1.0;
-        staticCard.add(staticProxyHostField, sc);
-        sc.gridx = 2; sc.weightx = 0;
-        staticCard.add(new JLabel("Port:"), sc);
-        sc.gridx = 3; sc.weightx = 0;
-        staticCard.add(staticProxyPortSpinner, sc);
-        sc.gridy = 1; sc.gridx = 0; sc.weightx = 0;
-        staticCard.add(new JLabel("Bypass-Liste:"), sc);
-        sc.gridx = 1; sc.gridwidth = 3; sc.weightx = 1.0;
-        staticCard.add(staticBypassListField, sc);
-
-        // PAC_URL card
-        JPanel pacCard = new JPanel(new GridBagLayout());
-        GridBagConstraints pc = new GridBagConstraints();
-        pc.insets = new Insets(2, 4, 2, 4);
-        pc.anchor = GridBagConstraints.WEST;
-        pc.fill = GridBagConstraints.HORIZONTAL;
-        pc.gridy = 0; pc.gridx = 0; pc.weightx = 0;
-        pacCard.add(new JLabel("PAC URL:"), pc);
-        pc.gridx = 1; pc.weightx = 1.0;
-        pacCard.add(pacUrlField, pc);
-
-        modeCardsPanel.add(autoCard, "AUTO");
-        modeCardsPanel.add(staticCard, "STATIC");
-        modeCardsPanel.add(pacCard, "PAC_URL");
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 1; gc.weightx = 0;
+        outboundPanel.add(proxyPortLabel, gc);
+        gc.gridx = 1; gc.gridwidth = 1; gc.weightx = 0;
+        outboundPanel.add(proxyPortSpinner, gc);
 
         row++;
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4; gc.weightx = 1.0;
-        outboundPanel.add(modeCardsPanel, gc);
+        outboundPanel.add(proxyNoProxyLocalBox, gc);
+
+        // PAC_URL-only: Explicit PAC URL
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
+        outboundPanel.add(pacUrlFromScriptBox, gc);
+
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 1; gc.weightx = 0;
+        outboundPanel.add(pacUrlLabel, gc);
+        gc.gridx = 1; gc.gridwidth = 3; gc.weightx = 1.0;
+        outboundPanel.add(pacUrlField, gc);
+
+        // Separator before PAC script
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
+        outboundPanel.add(new JSeparator(), gc);
+
+        // PAC/WPAD Script section
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
+        outboundPanel.add(pacSectionLabel, gc);
+
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4; gc.weightx = 1.0;
+        gc.fill = GridBagConstraints.BOTH; gc.weighty = 1.0;
+        outboundPanel.add(pacScrollPane, gc);
+        gc.fill = GridBagConstraints.HORIZONTAL; gc.weighty = 0;
+
+        row++;
+        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
+        outboundPanel.add(resetScriptButton, gc);
 
         // Separator
         row++;
@@ -273,18 +292,29 @@ public class ProxyPreferencesDialog extends JDialog {
         // Test URL + Test button + Diagnose button
         row++;
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 1; gc.weightx = 0;
-        outboundPanel.add(new JLabel("Test-URL:"), gc);
+        outboundPanel.add(proxyTestUrlLabel, gc);
         gc.gridx = 1; gc.gridwidth = 1; gc.weightx = 1.0;
-        outboundPanel.add(clientOutboundProxyTestUrlField, gc);
+        outboundPanel.add(proxyTestUrlField, gc);
         JPanel testButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        JButton testButton = new JButton("Testen");
-        testButton.addActionListener(e -> testProxyResolution());
-        testButtonsPanel.add(testButton);
+        proxyTestButton.addActionListener(e -> testProxyResolution());
+        testButtonsPanel.add(proxyTestButton);
         JButton diagnoseButton = new JButton("Diagnose");
         diagnoseButton.addActionListener(e -> showDiagnostics());
         testButtonsPanel.add(diagnoseButton);
         gc.gridx = 2; gc.gridwidth = 2; gc.weightx = 0;
         outboundPanel.add(testButtonsPanel, gc);
+
+        // Wire mode switch and reset
+        proxyModeBox.addActionListener(e -> updateModeVisibility());
+        resetScriptButton.addActionListener(e -> {
+            int answer = JOptionPane.showConfirmDialog(this,
+                    "Das aktuelle Script wird durch das Standard-Script ersetzt.\nFortfahren?",
+                    "Standard-Script laden", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+            if (answer == JOptionPane.OK_OPTION) {
+                proxyPacScriptArea.setText(getDefaultPacScript());
+            }
+        });
+        pacUrlFromScriptBox.addActionListener(e -> updatePacUrlHint());
 
         mainPanel.add(outboundPanel);
 
@@ -322,19 +352,26 @@ public class ProxyPreferencesDialog extends JDialog {
         // Client Outbound Proxy - ALL settings
         clientOutboundProxyCheckBox.setSelected(cfg.isClientOutboundProxyEnabled());
         String proxyMode = cfg.getClientOutboundProxyMode();
-        proxyModeBox.setSelectedItem(proxyMode != null ? proxyMode : "AUTO");
-        staticProxyHostField.setText(cfg.getClientOutboundProxyHost());
-        staticProxyPortSpinner.setValue(cfg.getClientOutboundProxyPort());
+        proxyModeBox.setSelectedItem(proxyMode != null ? proxyMode : "REGISTRY");
+        proxyHostField.setText(cfg.getClientOutboundProxyHost());
+        proxyPortSpinner.setValue(cfg.getClientOutboundProxyPort());
+        proxyNoProxyLocalBox.setSelected(cfg.isClientOutboundProxyNoProxyLocal());
         pacUrlField.setText(cfg.getClientOutboundProxyPacUrl());
-        bypassListField.setText(cfg.getClientOutboundProxyBypassList());
-        staticBypassListField.setText(cfg.getClientOutboundProxyBypassList());
-        String pacSource = cfg.getClientOutboundProxyPacSource();
-        pacSourceBox.setSelectedItem(pacSource != null && !pacSource.isEmpty() ? pacSource : "REGISTRY");
+        pacUrlFromScriptBox.setSelected(cfg.isClientOutboundProxyPacUrlFromScript());
+        
+        String pacScript = cfg.getClientOutboundProxyPacScript();
+        proxyPacScriptArea.setText(pacScript != null && !pacScript.isEmpty() ? pacScript : getDefaultPacScript());
+        
+        String testUrl = cfg.getClientOutboundProxyTestUrl();
+        proxyTestUrlField.setText(testUrl != null && !testUrl.isEmpty() ? testUrl : "https://plugins.gradle.org/m2/");
+        
         cacheTtlSpinner.setValue(cfg.getClientOutboundProxyCacheTtlSeconds());
         connectTimeoutSpinner.setValue(cfg.getClientOutboundProxyConnectTimeoutMillis());
         handshakeTimeoutSpinner.setValue(cfg.getClientOutboundProxyHandshakeTimeoutMillis());
         
         updateControls();
+        updateModeVisibility();
+        updatePacUrlHint();
     }
 
     private void onOk() {
@@ -374,10 +411,10 @@ public class ProxyPreferencesDialog extends JDialog {
         // Proxy validation
         boolean outboundEnabled = clientOutboundProxyCheckBox.isSelected();
         String selectedMode = (String) proxyModeBox.getSelectedItem();
-        if (outboundEnabled && "STATIC".equals(selectedMode)) {
-            String proxyHost = staticProxyHostField.getText().trim();
+        if (outboundEnabled && "MANUAL".equals(selectedMode)) {
+            String proxyHost = proxyHostField.getText().trim();
             if (proxyHost.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Proxy Host darf nicht leer sein im STATIC-Modus.",
+                JOptionPane.showMessageDialog(this, "Proxy Host darf nicht leer sein im MANUAL-Modus.",
                         "Validation Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
@@ -418,16 +455,15 @@ public class ProxyPreferencesDialog extends JDialog {
         // WPAD/PAC - ALLE Settings aus UI übernehmen
         cfg.setClientOutboundProxyEnabled(clientOutboundProxyCheckBox.isSelected());
         cfg.setClientOutboundProxyMode((String) proxyModeBox.getSelectedItem());
-        cfg.setClientOutboundProxyHost(staticProxyHostField.getText().trim());
-        cfg.setClientOutboundProxyPort(((Number) staticProxyPortSpinner.getValue()).intValue());
+        cfg.setClientOutboundProxyHost(proxyHostField.getText().trim());
+        cfg.setClientOutboundProxyPort(((Number) proxyPortSpinner.getValue()).intValue());
         cfg.setClientOutboundProxyPacUrl(pacUrlField.getText().trim());
-        // Bypass-Liste: aus dem aktiven Feld je nach Modus
-        String activeMode = (String) proxyModeBox.getSelectedItem();
-        String bypassValue = "STATIC".equals(activeMode)
-                ? staticBypassListField.getText().trim()
-                : bypassListField.getText().trim();
-        cfg.setClientOutboundProxyBypassList(bypassValue);
-        cfg.setClientOutboundProxyPacSource((String) pacSourceBox.getSelectedItem());
+        cfg.setClientOutboundProxyPacUrlFromScript(pacUrlFromScriptBox.isSelected());
+        cfg.setClientOutboundProxyBypassList(oldCfg.getClientOutboundProxyBypassList());
+        cfg.setClientOutboundProxyNoProxyLocal(proxyNoProxyLocalBox.isSelected());
+        cfg.setClientOutboundProxyPacScript(proxyPacScriptArea.getText());
+        cfg.setClientOutboundProxyTestUrl(proxyTestUrlField.getText().trim());
+        cfg.setClientOutboundProxyPacSource(oldCfg.getClientOutboundProxyPacSource());
         cfg.setClientOutboundProxyCacheTtlSeconds(((Number) cacheTtlSpinner.getValue()).intValue());
         cfg.setClientOutboundProxyConnectTimeoutMillis(((Number) connectTimeoutSpinner.getValue()).intValue());
         cfg.setClientOutboundProxyHandshakeTimeoutMillis(((Number) handshakeTimeoutSpinner.getValue()).intValue());
@@ -463,27 +499,114 @@ public class ProxyPreferencesDialog extends JDialog {
         rewriteModelField.setEnabled(rewrite);
         rewriteTemperatureField.setEnabled(rewrite);
         
-        // Proxy controls enable/disable
+        // Proxy controls enable/disable based on master checkbox
         boolean proxyEnabled = clientOutboundProxyCheckBox.isSelected();
         proxyModeBox.setEnabled(proxyEnabled);
-        staticProxyHostField.setEnabled(proxyEnabled);
-        staticProxyPortSpinner.setEnabled(proxyEnabled);
-        pacUrlField.setEnabled(proxyEnabled);
-        bypassListField.setEnabled(proxyEnabled);
-        staticBypassListField.setEnabled(proxyEnabled);
-        pacSourceBox.setEnabled(proxyEnabled);
         cacheTtlSpinner.setEnabled(proxyEnabled);
         connectTimeoutSpinner.setEnabled(proxyEnabled);
         handshakeTimeoutSpinner.setEnabled(proxyEnabled);
-        clientOutboundProxyTestUrlField.setEnabled(proxyEnabled);
-
-        // Show correct card for selected mode
+        
         if (proxyEnabled) {
-            String selectedMode = (String) proxyModeBox.getSelectedItem();
-            if (selectedMode != null && modeCardLayout != null) {
-                modeCardLayout.show(modeCardsPanel, selectedMode);
-            }
+            updateModeVisibility();
+        } else {
+            // Disable all mode-specific controls
+            proxyHostLabel.setEnabled(false);
+            proxyHostField.setEnabled(false);
+            proxyPortLabel.setEnabled(false);
+            proxyPortSpinner.setEnabled(false);
+            proxyNoProxyLocalBox.setEnabled(false);
+            pacUrlLabel.setEnabled(false);
+            pacUrlField.setEnabled(false);
+            pacUrlFromScriptBox.setEnabled(false);
+            pacSectionLabel.setEnabled(false);
+            proxyPacScriptArea.setEnabled(false);
+            proxyPacScriptArea.setEditable(false);
+            resetScriptButton.setEnabled(false);
+            proxyTestUrlLabel.setEnabled(false);
+            proxyTestUrlField.setEnabled(false);
+            proxyTestButton.setEnabled(false);
         }
+    }
+
+    /**
+     * Enables/disables fields depending on the selected proxy mode.
+     * Matches MainframeMate Settings > Proxy behavior:
+     * <ul>
+     *   <li><b>WINDOWS_PAC</b>: PAC script + Test enabled, Host/Port/PAC-URL disabled</li>
+     *   <li><b>REGISTRY</b>: Test-URL + Test enabled, PAC script + Host/Port/PAC-URL disabled</li>
+     *   <li><b>PAC_URL</b>: PAC-URL + Test enabled, PAC script + Host/Port disabled</li>
+     *   <li><b>MANUAL</b>: Host/Port enabled, PAC script + Test + PAC-URL disabled</li>
+     * </ul>
+     */
+    private void updateModeVisibility() {
+        String mode = java.util.Objects.toString(proxyModeBox.getSelectedItem(), "REGISTRY");
+        boolean isPac = "WINDOWS_PAC".equals(mode);
+        boolean isRegistry = "REGISTRY".equals(mode);
+        boolean isPacUrl = "PAC_URL".equals(mode);
+        boolean isManual = "MANUAL".equals(mode);
+
+        // MANUAL fields — only in MANUAL mode
+        proxyHostLabel.setEnabled(isManual);
+        proxyHostField.setEnabled(isManual);
+        proxyPortLabel.setEnabled(isManual);
+        proxyPortSpinner.setEnabled(isManual);
+
+        // No-proxy-local — always available
+        proxyNoProxyLocalBox.setEnabled(true);
+
+        // Explicit PAC URL / Script — only in PAC_URL mode
+        pacUrlLabel.setEnabled(isPacUrl);
+        pacUrlField.setEnabled(isPacUrl);
+        pacUrlFromScriptBox.setEnabled(isPacUrl);
+
+        // PAC/WPAD script — only in WINDOWS_PAC mode
+        pacSectionLabel.setEnabled(isPac);
+        proxyPacScriptArea.setEnabled(isPac);
+        proxyPacScriptArea.setEditable(isPac);
+        resetScriptButton.setEnabled(isPac);
+
+        // Test-URL + Test-Button — for WINDOWS_PAC, REGISTRY, and PAC_URL
+        boolean testable = isPac || isRegistry || isPacUrl;
+        proxyTestUrlLabel.setEnabled(testable);
+        proxyTestUrlField.setEnabled(testable);
+        proxyTestButton.setEnabled(testable);
+    }
+
+    /** Updates label and tooltip of the PAC URL field depending on script mode. */
+    private void updatePacUrlHint() {
+        if (pacUrlFromScriptBox.isSelected()) {
+            pacUrlLabel.setText("PAC-URL Script:");
+            pacUrlField.setToolTipText("PowerShell-Befehl, dessen Ausgabe die PAC-URL ist.");
+        } else {
+            pacUrlLabel.setText("PAC-URL:");
+            pacUrlField.setToolTipText("Vollständige URL zur PAC-Datei.");
+        }
+    }
+
+    /** Returns a default PAC/WPAD PowerShell script. */
+    private String getDefaultPacScript() {
+        return "param(\n" +
+                "    [string]$TestUrl = \"https://plugins.gradle.org/m2/\",\n" +
+                "    [switch]$DebugEnabled\n" +
+                ")\n\n" +
+                "function Write-DebugLine([string]$msg) {\n" +
+                "    if ($DebugEnabled) { Write-Host $msg }\n" +
+                "}\n\n" +
+                "$uri = [Uri]$TestUrl\n\n" +
+                "$proxy = [System.Net.WebRequest]::GetSystemWebProxy()\n" +
+                "$proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials\n\n" +
+                "if ($proxy.IsBypassed($uri)) {\n" +
+                "    Write-DebugLine (\"[DEBUG] DIRECT for {0}\" -f $TestUrl)\n" +
+                "    exit 0\n" +
+                "}\n\n" +
+                "$proxyUri = $proxy.GetProxy($uri)\n\n" +
+                "if (-not $proxyUri -or $proxyUri.AbsoluteUri -eq $uri.AbsoluteUri) {\n" +
+                "    Write-DebugLine (\"[DEBUG] DIRECT for {0}\" -f $TestUrl)\n" +
+                "    exit 0\n" +
+                "}\n\n" +
+                "Write-DebugLine (\"[DEBUG] Proxy for {0} -> {1}\" -f $TestUrl, $proxyUri.AbsoluteUri)\n" +
+                "Write-Output (\"{0}:{1}\" -f $proxyUri.Host, $proxyUri.Port)\n" +
+                "exit 0\n";
     }
 
     private void chooseKeystore() {
@@ -499,7 +622,7 @@ public class ProxyPreferencesDialog extends JDialog {
      * Tests proxy resolution using the win-proxy-java library with current dialog settings.
      */
     private void testProxyResolution() {
-        String testUrl = clientOutboundProxyTestUrlField.getText().trim();
+        String testUrl = proxyTestUrlField.getText().trim();
         if (testUrl.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Bitte Test-URL eingeben.", "Proxy Test", JOptionPane.WARNING_MESSAGE);
             return;
@@ -517,16 +640,17 @@ public class ProxyPreferencesDialog extends JDialog {
             // Create resolver with CURRENT dialog settings (not saved config)
             String selectedMode = (String) proxyModeBox.getSelectedItem();
             WinProxyJavaResolver.ResolveMode resolveMode = WinProxyJavaResolver.ResolveMode.AUTO;
-            if ("STATIC".equals(selectedMode)) resolveMode = WinProxyJavaResolver.ResolveMode.STATIC;
+            if ("MANUAL".equals(selectedMode)) resolveMode = WinProxyJavaResolver.ResolveMode.STATIC;
             else if ("PAC_URL".equals(selectedMode)) resolveMode = WinProxyJavaResolver.ResolveMode.PAC_URL;
+            // WINDOWS_PAC and REGISTRY both use AUTO mode
 
             WinProxyJavaResolver resolver = new WinProxyJavaResolver(
                     resolveMode,
-                    staticProxyHostField.getText().trim(),
-                    ((Number) staticProxyPortSpinner.getValue()).intValue(),
+                    proxyHostField.getText().trim(),
+                    ((Number) proxyPortSpinner.getValue()).intValue(),
                     pacUrlField.getText().trim(),
-                    "STATIC".equals(selectedMode) ? staticBypassListField.getText().trim() : bypassListField.getText().trim(),
-                    (String) pacSourceBox.getSelectedItem(),
+                    "", // bypass list
+                    "REGISTRY".equals(selectedMode) ? "REGISTRY" : "POWERSHELL",
                     300,
                     null
             );

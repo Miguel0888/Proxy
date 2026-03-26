@@ -26,16 +26,19 @@ public class ProxyConfig {
 
     // WPAD/PAC Proxy Support (Client Mode) - now using win-proxy-java library (no scripts needed)
     private boolean clientOutboundProxyEnabled = false;
-    private String clientOutboundProxyMode = "AUTO"; // AUTO, STATIC, PAC_URL
-    private String clientOutboundProxyHost = "";      // manual proxy host (STATIC mode)
-    private int clientOutboundProxyPort = 8080;       // manual proxy port (STATIC mode)
+    private String clientOutboundProxyMode = "REGISTRY"; // WINDOWS_PAC, REGISTRY, PAC_URL, MANUAL
+    private String clientOutboundProxyHost = "";      // manual proxy host (MANUAL mode)
+    private int clientOutboundProxyPort = 8080;       // manual proxy port (MANUAL mode)
     private String clientOutboundProxyPacUrl = "";     // custom PAC URL (PAC_URL mode)
+    private boolean clientOutboundProxyPacUrlFromScript = true; // if true, pacUrl is a PowerShell script whose output is the PAC URL
     private String clientOutboundProxyBypassList = ""; // bypass list (semicolon-separated, e.g. "localhost;127.0.0.1;*.local")
+    private boolean clientOutboundProxyNoProxyLocal = true; // never proxy local targets
+    private String clientOutboundProxyPacScript = "";  // PowerShell PAC/WPAD script (WINDOWS_PAC mode)
+    private String clientOutboundProxyTestUrl = "https://plugins.gradle.org/m2/"; // test URL for proxy test
     private String clientOutboundProxyPacSource = "REGISTRY"; // PAC URL source: DIRECT, REGISTRY, POWERSHELL
     private int clientOutboundProxyCacheTtlSeconds = 300; // 5 minutes
     private int clientOutboundProxyConnectTimeoutMillis = 10000; // 10 seconds
     private int clientOutboundProxyHandshakeTimeoutMillis = 10000; // 10 seconds
-    // Note: clientOutboundProxyScriptPath removed - win-proxy-java library doesn't need external scripts
 
     // Gateway Authentication Options
     private String gatewayAuthMode = "PASSKEY"; // NONE, PASSKEY, TOKEN
@@ -218,7 +221,7 @@ public class ProxyConfig {
     }
 
     public void setClientOutboundProxyMode(String mode) {
-        if (mode != null && (mode.equals("AUTO") || mode.equals("STATIC") || mode.equals("PAC_URL"))) {
+        if (mode != null && (mode.equals("WINDOWS_PAC") || mode.equals("REGISTRY") || mode.equals("PAC_URL") || mode.equals("MANUAL"))) {
             this.clientOutboundProxyMode = mode;
         }
     }
@@ -247,6 +250,14 @@ public class ProxyConfig {
 
     public void setClientOutboundProxyPacUrl(String url) {
         this.clientOutboundProxyPacUrl = url != null ? url.trim() : "";
+    }
+
+    public boolean isClientOutboundProxyPacUrlFromScript() {
+        return clientOutboundProxyPacUrlFromScript;
+    }
+
+    public void setClientOutboundProxyPacUrlFromScript(boolean fromScript) {
+        this.clientOutboundProxyPacUrlFromScript = fromScript;
     }
 
     public String getClientOutboundProxyBypassList() {
@@ -293,6 +304,30 @@ public class ProxyConfig {
         if (millis > 0) {
             this.clientOutboundProxyHandshakeTimeoutMillis = millis;
         }
+    }
+
+    public boolean isClientOutboundProxyNoProxyLocal() {
+        return clientOutboundProxyNoProxyLocal;
+    }
+
+    public void setClientOutboundProxyNoProxyLocal(boolean noProxyLocal) {
+        this.clientOutboundProxyNoProxyLocal = noProxyLocal;
+    }
+
+    public String getClientOutboundProxyPacScript() {
+        return clientOutboundProxyPacScript;
+    }
+
+    public void setClientOutboundProxyPacScript(String script) {
+        this.clientOutboundProxyPacScript = script != null ? script : "";
+    }
+
+    public String getClientOutboundProxyTestUrl() {
+        return clientOutboundProxyTestUrl;
+    }
+
+    public void setClientOutboundProxyTestUrl(String url) {
+        this.clientOutboundProxyTestUrl = url != null ? url.trim() : "";
     }
 
     /**
