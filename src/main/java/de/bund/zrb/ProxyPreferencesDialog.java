@@ -241,20 +241,19 @@ public class ProxyPreferencesDialog extends JDialog {
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
         outboundPanel.add(new JSeparator(), gc);
 
-        // PAC/WPAD Script section
+        // PAC/WPAD Script section — Label + Default-Button nebeneinander
         row++;
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
-        outboundPanel.add(pacSectionLabel, gc);
+        JPanel pacHeaderPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        pacHeaderPanel.add(pacSectionLabel);
+        pacHeaderPanel.add(resetScriptButton);
+        outboundPanel.add(pacHeaderPanel, gc);
 
         row++;
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4; gc.weightx = 1.0;
         gc.fill = GridBagConstraints.BOTH; gc.weighty = 1.0;
         outboundPanel.add(pacScrollPane, gc);
         gc.fill = GridBagConstraints.HORIZONTAL; gc.weighty = 0;
-
-        row++;
-        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
-        outboundPanel.add(resetScriptButton, gc);
 
         // Separator
         row++;
@@ -307,12 +306,17 @@ public class ProxyPreferencesDialog extends JDialog {
         // Wire mode switch and reset
         proxyModeBox.addActionListener(e -> updateModeVisibility());
         resetScriptButton.addActionListener(e -> {
-            int answer = JOptionPane.showConfirmDialog(this,
-                    "Das aktuelle Script wird durch das Standard-Script ersetzt.\nFortfahren?",
-                    "Standard-Script laden", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
-            if (answer == JOptionPane.OK_OPTION) {
-                proxyPacScriptArea.setText(getDefaultPacScript());
+            String current = proxyPacScriptArea.getText();
+            if (current != null && !current.trim().isEmpty()) {
+                int answer = JOptionPane.showConfirmDialog(this,
+                        "Das aktuelle Script wird durch das Standard-Script ersetzt.\nFortfahren?",
+                        "Standard-Script laden", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+                if (answer != JOptionPane.OK_OPTION) {
+                    return;
+                }
             }
+            proxyPacScriptArea.setText(getDefaultPacScript());
+            proxyPacScriptArea.setCaretPosition(0);
         });
         pacUrlFromScriptBox.addActionListener(e -> updatePacUrlHint());
 
@@ -360,7 +364,8 @@ public class ProxyPreferencesDialog extends JDialog {
         pacUrlFromScriptBox.setSelected(cfg.isClientOutboundProxyPacUrlFromScript());
         
         String pacScript = cfg.getClientOutboundProxyPacScript();
-        proxyPacScriptArea.setText(pacScript != null && !pacScript.isEmpty() ? pacScript : getDefaultPacScript());
+        proxyPacScriptArea.setText(pacScript != null && !pacScript.trim().isEmpty() ? pacScript : getDefaultPacScript());
+        proxyPacScriptArea.setCaretPosition(0);
         
         String testUrl = cfg.getClientOutboundProxyTestUrl();
         proxyTestUrlField.setText(testUrl != null && !testUrl.isEmpty() ? testUrl : "https://plugins.gradle.org/m2/");
