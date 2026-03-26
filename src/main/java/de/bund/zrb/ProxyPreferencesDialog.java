@@ -42,6 +42,7 @@ public class ProxyPreferencesDialog extends JDialog {
     private JLabel pacUrlLabel;
     private JTextField pacUrlField;
     private JCheckBox pacUrlFromScriptBox;
+    private JButton loadDefaultPacUrlButton;
     private JLabel proxyTestUrlLabel;
     private JTextField proxyTestUrlField;
     private JButton proxyTestButton;
@@ -97,6 +98,8 @@ public class ProxyPreferencesDialog extends JDialog {
         pacUrlFromScriptBox = new JCheckBox("URL per PowerShell-Script beziehen");
         pacUrlLabel = new JLabel("PAC-URL:");
         pacUrlField = new JTextField(40);
+        loadDefaultPacUrlButton = new JButton("Default laden");
+        loadDefaultPacUrlButton.setToolTipText("Standard-WPAD-Script zum Ermitteln der PAC-URL aus der Registry laden");
         
         pacSectionLabel = new JLabel("PAC / WPAD Script");
         pacSectionLabel.setFont(pacSectionLabel.getFont().deriveFont(Font.BOLD, pacSectionLabel.getFont().getSize2D() + 1f));
@@ -225,10 +228,13 @@ public class ProxyPreferencesDialog extends JDialog {
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4; gc.weightx = 1.0;
         outboundPanel.add(proxyNoProxyLocalBox, gc);
 
-        // PAC_URL-only: Explicit PAC URL
+        // PAC_URL-only: Checkbox + Default-Button nebeneinander
         row++;
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 4;
-        outboundPanel.add(pacUrlFromScriptBox, gc);
+        JPanel pacUrlCheckboxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        pacUrlCheckboxPanel.add(pacUrlFromScriptBox);
+        pacUrlCheckboxPanel.add(loadDefaultPacUrlButton);
+        outboundPanel.add(pacUrlCheckboxPanel, gc);
 
         row++;
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 1; gc.weightx = 0;
@@ -319,6 +325,11 @@ public class ProxyPreferencesDialog extends JDialog {
             proxyPacScriptArea.setCaretPosition(0);
         });
         pacUrlFromScriptBox.addActionListener(e -> updatePacUrlHint());
+        loadDefaultPacUrlButton.addActionListener(e -> {
+            pacUrlField.setText(getDefaultPacUrlScript());
+            pacUrlFromScriptBox.setSelected(true);
+            updatePacUrlHint();
+        });
 
         mainPanel.add(outboundPanel);
 
@@ -361,6 +372,9 @@ public class ProxyPreferencesDialog extends JDialog {
         proxyPortSpinner.setValue(cfg.getClientOutboundProxyPort());
         proxyNoProxyLocalBox.setSelected(cfg.isClientOutboundProxyNoProxyLocal());
         pacUrlField.setText(cfg.getClientOutboundProxyPacUrl());
+        if (pacUrlField.getText().trim().isEmpty() && cfg.isClientOutboundProxyPacUrlFromScript()) {
+            pacUrlField.setText(getDefaultPacUrlScript());
+        }
         pacUrlFromScriptBox.setSelected(cfg.isClientOutboundProxyPacUrlFromScript());
         
         String pacScript = cfg.getClientOutboundProxyPacScript();
@@ -523,6 +537,7 @@ public class ProxyPreferencesDialog extends JDialog {
             pacUrlLabel.setEnabled(false);
             pacUrlField.setEnabled(false);
             pacUrlFromScriptBox.setEnabled(false);
+            loadDefaultPacUrlButton.setEnabled(false);
             pacSectionLabel.setEnabled(false);
             proxyPacScriptArea.setEnabled(false);
             proxyPacScriptArea.setEditable(false);
@@ -563,6 +578,7 @@ public class ProxyPreferencesDialog extends JDialog {
         pacUrlLabel.setEnabled(isPacUrl);
         pacUrlField.setEnabled(isPacUrl);
         pacUrlFromScriptBox.setEnabled(isPacUrl);
+        loadDefaultPacUrlButton.setEnabled(isPacUrl);
 
         // PAC/WPAD script — only in WINDOWS_PAC mode
         pacSectionLabel.setEnabled(isPac);
@@ -586,6 +602,11 @@ public class ProxyPreferencesDialog extends JDialog {
             pacUrlLabel.setText("PAC-URL:");
             pacUrlField.setToolTipText("Vollständige URL zur PAC-Datei.");
         }
+    }
+
+    /** Returns the default PowerShell one-liner to retrieve the PAC URL from Windows Registry. */
+    private String getDefaultPacUrlScript() {
+        return "(Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings').AutoConfigURL";
     }
 
     /** Returns a default PAC/WPAD PowerShell script. */
