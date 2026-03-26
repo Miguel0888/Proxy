@@ -310,15 +310,13 @@ class ProxyController {
             return new DirectSocketDialer(config.getClientOutboundProxyConnectTimeoutMillis(), 30000);
         }
 
-        // Create resolver using win-proxy-java library (no external scripts needed)
+        // Create resolver using win-proxy-java library with full config
         try {
-            WinProxyJavaResolver resolver = new WinProxyJavaResolver(
-                    config.getClientOutboundProxyCacheTtlSeconds(),
-                    trafficListener
-            );
+            WinProxyJavaResolver resolver = new WinProxyJavaResolver(config, trafficListener);
 
             if (trafficListener != null) {
-                trafficListener.onTraffic("info", "Windows proxy resolver initialized (win-proxy-java library)", false);
+                trafficListener.onTraffic("info",
+                        "Windows proxy resolver initialized (mode=" + resolver.getMode() + ")", false);
             }
             
             return new ProxySocketDialer(

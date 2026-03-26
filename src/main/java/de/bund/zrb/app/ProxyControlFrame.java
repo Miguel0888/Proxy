@@ -399,10 +399,15 @@ public class ProxyControlFrame extends JFrame implements ProxyView {
         
         // WPAD/PAC Settings übernehmen
         cfg.setClientOutboundProxyEnabled(oldCfg.isClientOutboundProxyEnabled());
+        cfg.setClientOutboundProxyMode(oldCfg.getClientOutboundProxyMode());
+        cfg.setClientOutboundProxyHost(oldCfg.getClientOutboundProxyHost());
+        cfg.setClientOutboundProxyPort(oldCfg.getClientOutboundProxyPort());
+        cfg.setClientOutboundProxyPacUrl(oldCfg.getClientOutboundProxyPacUrl());
+        cfg.setClientOutboundProxyBypassList(oldCfg.getClientOutboundProxyBypassList());
+        cfg.setClientOutboundProxyPacSource(oldCfg.getClientOutboundProxyPacSource());
         cfg.setClientOutboundProxyCacheTtlSeconds(oldCfg.getClientOutboundProxyCacheTtlSeconds());
         cfg.setClientOutboundProxyConnectTimeoutMillis(oldCfg.getClientOutboundProxyConnectTimeoutMillis());
         cfg.setClientOutboundProxyHandshakeTimeoutMillis(oldCfg.getClientOutboundProxyHandshakeTimeoutMillis());
-        cfg.setClientOutboundProxyScriptPath(oldCfg.getClientOutboundProxyScriptPath());
         
         // Gateway Auth
         cfg.setGatewayAuthMode(oldCfg.getGatewayAuthMode());

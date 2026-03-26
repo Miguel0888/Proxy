@@ -26,6 +26,12 @@ public class ProxyConfig {
 
     // WPAD/PAC Proxy Support (Client Mode) - now using win-proxy-java library (no scripts needed)
     private boolean clientOutboundProxyEnabled = false;
+    private String clientOutboundProxyMode = "AUTO"; // AUTO, STATIC, PAC_URL
+    private String clientOutboundProxyHost = "";      // manual proxy host (STATIC mode)
+    private int clientOutboundProxyPort = 8080;       // manual proxy port (STATIC mode)
+    private String clientOutboundProxyPacUrl = "";     // custom PAC URL (PAC_URL mode)
+    private String clientOutboundProxyBypassList = ""; // bypass list (semicolon-separated, e.g. "localhost;127.0.0.1;*.local")
+    private String clientOutboundProxyPacSource = "REGISTRY"; // PAC URL source: DIRECT, REGISTRY, POWERSHELL
     private int clientOutboundProxyCacheTtlSeconds = 300; // 5 minutes
     private int clientOutboundProxyConnectTimeoutMillis = 10000; // 10 seconds
     private int clientOutboundProxyHandshakeTimeoutMillis = 10000; // 10 seconds
@@ -205,6 +211,58 @@ public class ProxyConfig {
 
     public void setClientOutboundProxyEnabled(boolean enabled) {
         this.clientOutboundProxyEnabled = enabled;
+    }
+
+    public String getClientOutboundProxyMode() {
+        return clientOutboundProxyMode;
+    }
+
+    public void setClientOutboundProxyMode(String mode) {
+        if (mode != null && (mode.equals("AUTO") || mode.equals("STATIC") || mode.equals("PAC_URL"))) {
+            this.clientOutboundProxyMode = mode;
+        }
+    }
+
+    public String getClientOutboundProxyHost() {
+        return clientOutboundProxyHost;
+    }
+
+    public void setClientOutboundProxyHost(String host) {
+        this.clientOutboundProxyHost = host != null ? host.trim() : "";
+    }
+
+    public int getClientOutboundProxyPort() {
+        return clientOutboundProxyPort;
+    }
+
+    public void setClientOutboundProxyPort(int port) {
+        if (port > 0 && port <= 65535) {
+            this.clientOutboundProxyPort = port;
+        }
+    }
+
+    public String getClientOutboundProxyPacUrl() {
+        return clientOutboundProxyPacUrl;
+    }
+
+    public void setClientOutboundProxyPacUrl(String url) {
+        this.clientOutboundProxyPacUrl = url != null ? url.trim() : "";
+    }
+
+    public String getClientOutboundProxyBypassList() {
+        return clientOutboundProxyBypassList;
+    }
+
+    public void setClientOutboundProxyBypassList(String list) {
+        this.clientOutboundProxyBypassList = list != null ? list.trim() : "";
+    }
+
+    public String getClientOutboundProxyPacSource() {
+        return clientOutboundProxyPacSource;
+    }
+
+    public void setClientOutboundProxyPacSource(String source) {
+        this.clientOutboundProxyPacSource = source != null ? source.trim() : "";
     }
 
     public int getClientOutboundProxyCacheTtlSeconds() {

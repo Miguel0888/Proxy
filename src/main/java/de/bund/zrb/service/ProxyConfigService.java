@@ -31,12 +31,18 @@ public class ProxyConfigService {
     private static final String KEY_SERVER_GATEWAY_PASSKEY = "proxy.server.gateway.passkey";
     private static final String KEY_CLIENT_GATEWAY_PASSKEY = "proxy.client.gateway.passkey";
 
-    // WPAD/PAC Proxy Support (Client Mode)
+    // WPAD/PAC Proxy Support (Client Mode) - win-proxy-java
     private static final String KEY_CLIENT_OUTBOUND_PROXY_ENABLED = "proxy.client.outboundProxy.enabled";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_MODE = "proxy.client.outboundProxy.mode";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_HOST = "proxy.client.outboundProxy.host";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_PORT = "proxy.client.outboundProxy.port";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_PAC_URL = "proxy.client.outboundProxy.pacUrl";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_BYPASS_LIST = "proxy.client.outboundProxy.bypassList";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_PAC_SOURCE = "proxy.client.outboundProxy.pacSource";
     private static final String KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL = "proxy.client.outboundProxy.cacheTtlSeconds";
     private static final String KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT = "proxy.client.outboundProxy.connectTimeoutMillis";
     private static final String KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT = "proxy.client.outboundProxy.handshakeTimeoutMillis";
-    private static final String KEY_CLIENT_OUTBOUND_PROXY_SCRIPT_PATH = "proxy.client.outboundProxy.scriptPath";
+    private static final String KEY_CLIENT_OUTBOUND_PROXY_SCRIPT_PATH = "proxy.client.outboundProxy.scriptPath"; // legacy, ignored
 
     // Gateway Authentication
     private static final String KEY_GATEWAY_AUTH_MODE = "proxy.gateway.authMode";
@@ -117,34 +123,51 @@ public class ProxyConfigService {
             if (outboundProxyEnabledRaw != null) {
                 cfg.setClientOutboundProxyEnabled(Boolean.parseBoolean(outboundProxyEnabledRaw));
             }
+            String outboundProxyModeRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_MODE);
+            if (outboundProxyModeRaw != null) {
+                cfg.setClientOutboundProxyMode(outboundProxyModeRaw);
+            }
+            String outboundProxyHostRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_HOST);
+            if (outboundProxyHostRaw != null) {
+                cfg.setClientOutboundProxyHost(outboundProxyHostRaw);
+            }
+            String outboundProxyPortRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_PORT);
+            if (outboundProxyPortRaw != null) {
+                try {
+                    cfg.setClientOutboundProxyPort(Integer.parseInt(outboundProxyPortRaw));
+                } catch (NumberFormatException ignored) {}
+            }
+            String outboundProxyPacUrlRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_URL);
+            if (outboundProxyPacUrlRaw != null) {
+                cfg.setClientOutboundProxyPacUrl(outboundProxyPacUrlRaw);
+            }
+            String outboundProxyBypassRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_BYPASS_LIST);
+            if (outboundProxyBypassRaw != null) {
+                cfg.setClientOutboundProxyBypassList(outboundProxyBypassRaw);
+            }
+            String outboundProxyPacSourceRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_SOURCE);
+            if (outboundProxyPacSourceRaw != null) {
+                cfg.setClientOutboundProxyPacSource(outboundProxyPacSourceRaw);
+            }
             String cacheTtlRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL);
             if (cacheTtlRaw != null) {
                 try {
                     cfg.setClientOutboundProxyCacheTtlSeconds(Integer.parseInt(cacheTtlRaw));
-                } catch (NumberFormatException ignored) {
-                    // ignore
-                }
+                } catch (NumberFormatException ignored) {}
             }
             String connectTimeoutRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT);
             if (connectTimeoutRaw != null) {
                 try {
                     cfg.setClientOutboundProxyConnectTimeoutMillis(Integer.parseInt(connectTimeoutRaw));
-                } catch (NumberFormatException ignored) {
-                    // ignore
-                }
+                } catch (NumberFormatException ignored) {}
             }
             String handshakeTimeoutRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT);
             if (handshakeTimeoutRaw != null) {
                 try {
                     cfg.setClientOutboundProxyHandshakeTimeoutMillis(Integer.parseInt(handshakeTimeoutRaw));
-                } catch (NumberFormatException ignored) {
-                    // ignore
-                }
+                } catch (NumberFormatException ignored) {}
             }
-            String scriptPathRaw = props.getProperty(KEY_CLIENT_OUTBOUND_PROXY_SCRIPT_PATH);
-            if (scriptPathRaw != null) {
-                cfg.setClientOutboundProxyScriptPath(scriptPathRaw);
-            }
+            // scriptPath: legacy, ignoriert beim Laden
 
             // Gateway Authentication laden
             String authModeRaw = props.getProperty(KEY_GATEWAY_AUTH_MODE);
@@ -205,10 +228,15 @@ public class ProxyConfigService {
 
         // WPAD/PAC Proxy Support speichern
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_ENABLED, String.valueOf(config.isClientOutboundProxyEnabled()));
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_MODE, config.getClientOutboundProxyMode());
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_HOST, config.getClientOutboundProxyHost());
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_PORT, String.valueOf(config.getClientOutboundProxyPort()));
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_URL, config.getClientOutboundProxyPacUrl());
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_BYPASS_LIST, config.getClientOutboundProxyBypassList());
+        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_PAC_SOURCE, config.getClientOutboundProxyPacSource());
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CACHE_TTL, String.valueOf(config.getClientOutboundProxyCacheTtlSeconds()));
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_CONNECT_TIMEOUT, String.valueOf(config.getClientOutboundProxyConnectTimeoutMillis()));
         props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_HANDSHAKE_TIMEOUT, String.valueOf(config.getClientOutboundProxyHandshakeTimeoutMillis()));
-        props.setProperty(KEY_CLIENT_OUTBOUND_PROXY_SCRIPT_PATH, config.getClientOutboundProxyScriptPath());
 
         // Gateway Authentication speichern
         props.setProperty(KEY_GATEWAY_AUTH_MODE, config.getGatewayAuthMode());
