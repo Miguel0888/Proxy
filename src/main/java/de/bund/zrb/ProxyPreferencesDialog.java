@@ -30,9 +30,8 @@ public class ProxyPreferencesDialog extends JDialog {
     private JCheckBox gatewayCheckBox;
     private JCheckBox relayModeCheckBox;
     
-    // Client Outbound Proxy (WPAD/PAC)
+    // Client Outbound Proxy (Windows System Proxy via win-proxy-java)
     private JCheckBox clientOutboundProxyCheckBox;
-    private JTextField clientOutboundProxyScriptField;
     private JTextField clientOutboundProxyTestUrlField;
 
     public ProxyPreferencesDialog(Frame owner, ProxyConfigService configService) {
@@ -63,9 +62,8 @@ public class ProxyPreferencesDialog extends JDialog {
         gatewayCheckBox = new JCheckBox("Accept gateway client connections (required for reverse proxy)");
         relayModeCheckBox = new JCheckBox("Relay mode: Keep local server running when connected to remote");
         
-        // Client Outbound
+        // Client Outbound (win-proxy-java)
         clientOutboundProxyCheckBox = new JCheckBox("Use Windows system proxy (WPAD/PAC) for outbound connections");
-        clientOutboundProxyScriptField = new JTextField(30);
         clientOutboundProxyTestUrlField = new JTextField("https://www.google.com/", 30);
 
         // Listeners
@@ -148,22 +146,12 @@ public class ProxyPreferencesDialog extends JDialog {
         outboundPanel.add(clientOutboundProxyCheckBox, gc);
 
         row++;
-        gc.gridx = 0; gc.gridy = row; gc.gridwidth = 1;
-        outboundPanel.add(new JLabel("Custom Script (optional):"), gc);
-        gc.gridx = 1; gc.weightx = 1.0;
-        outboundPanel.add(clientOutboundProxyScriptField, gc);
-        JButton browseScript = new JButton("Browse...");
-        browseScript.addActionListener(e -> chooseScript());
-        gc.gridx = 2; gc.weightx = 0;
-        outboundPanel.add(browseScript, gc);
-
-        row++;
         gc.gridx = 0; gc.gridy = row; gc.gridwidth = 1; gc.weightx = 0;
         outboundPanel.add(new JLabel("Test URL:"), gc);
         gc.gridx = 1; gc.weightx = 1.0;
         outboundPanel.add(clientOutboundProxyTestUrlField, gc);
         JButton testButton = new JButton("Test");
-        testButton.addActionListener(e -> testProxyScript());
+        testButton.addActionListener(e -> testProxyResolution());
         gc.gridx = 2; gc.weightx = 0;
         outboundPanel.add(testButton, gc);
 
@@ -198,7 +186,6 @@ public class ProxyPreferencesDialog extends JDialog {
         
         // Client Outbound
         clientOutboundProxyCheckBox.setSelected(cfg.isClientOutboundProxyEnabled());
-        clientOutboundProxyScriptField.setText(cfg.getClientOutboundProxyScriptPath());
         
         updateControls();
     }
@@ -266,7 +253,6 @@ public class ProxyPreferencesDialog extends JDialog {
         cfg.setClientOutboundProxyCacheTtlSeconds(oldCfg.getClientOutboundProxyCacheTtlSeconds());
         cfg.setClientOutboundProxyConnectTimeoutMillis(oldCfg.getClientOutboundProxyConnectTimeoutMillis());
         cfg.setClientOutboundProxyHandshakeTimeoutMillis(oldCfg.getClientOutboundProxyHandshakeTimeoutMillis());
-        cfg.setClientOutboundProxyScriptPath(clientOutboundProxyScriptField.getText().trim());
         
         // Gateway Auth
         cfg.setGatewayAuthMode(oldCfg.getGatewayAuthMode());
@@ -299,9 +285,8 @@ public class ProxyPreferencesDialog extends JDialog {
         rewriteModelField.setEnabled(rewrite);
         rewriteTemperatureField.setEnabled(rewrite);
         
-        // Script and test fields enabled only when WPAD is enabled
+        // Test URL field enabled only when WPAD is enabled
         boolean wpadEnabled = clientOutboundProxyCheckBox.isSelected();
-        clientOutboundProxyScriptField.setEnabled(wpadEnabled);
         clientOutboundProxyTestUrlField.setEnabled(wpadEnabled);
     }
 
@@ -314,34 +299,28 @@ public class ProxyPreferencesDialog extends JDialog {
         }
     }
 
-    private void chooseScript() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Select proxy resolver script (.ps1)");
-        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("PowerShell Scripts (*.ps1)", "ps1"));
-        int result = chooser.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            clientOutboundProxyScriptField.setText(chooser.getSelectedFile().getAbsolutePath());
-        }
-    }
-
-    private void testProxyScript() {
+    /**
+     * Tests proxy resolution using the win-proxy-java library.
+     */
+    private void testProxyResolution() {
         String testUrl = clientOutboundProxyTestUrlField.getText().trim();
         if (testUrl.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please enter a test URL.", "Proxy Test", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        // Determine which script to use
-        String customScriptPath = clientOutboundProxyScriptField.getText().trim();
-        
+        // Check if Windows
+        String os = System.getProperty("os.name");
+        if (os == null || !os.toLowerCase().contains("win")) {
+            JOptionPane.showMessageDialog(this, 
+                    "Windows system proxy detection is only available on Windows.",
+                    "Proxy Test", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
         try {
-            File workingDir = configService.getConfigDir();
-            WindowsProxyResolver resolver = new WindowsProxyResolver(
-                    workingDir,
-                    300, // 5 min cache TTL
-                    null, // no traffic listener
-                    customScriptPath.isEmpty() ? null : customScriptPath
-            );
+            // Create resolver using win-proxy-java library
+            WinProxyJavaResolver resolver = new WinProxyJavaResolver(300, null);
 
             // Parse URL to get host/port
             URI uri = new URI(testUrl);
@@ -356,21 +335,30 @@ public class ProxyPreferencesDialog extends JDialog {
             ProxyInfo proxyInfo = resolver.resolveProxy(host, port, https);
 
             // Build result message
-            String msg;
-            if (proxyInfo.getCandidates().isEmpty() || proxyInfo.getCandidates().get(0).isDirect()) {
-                msg = "DIRECT (no proxy needed)";
+            StringBuilder msg = new StringBuilder();
+            msg.append("Proxy resolution for: ").append(testUrl).append("\n\n");
+            
+            if (proxyInfo.isDirect()) {
+                msg.append("Result: DIRECT (no proxy needed)");
             } else {
-                ProxyInfo.ProxyCandidate candidate = proxyInfo.getCandidates().get(0);
-                msg = candidate.getHost() + ":" + candidate.getPort() + " (" + candidate.getType() + ")";
+                msg.append("Result:\n");
+                for (ProxyInfo.ProxyCandidate candidate : proxyInfo.getCandidates()) {
+                    if (candidate.isDirect()) {
+                        msg.append("  - DIRECT\n");
+                    } else {
+                        msg.append("  - ").append(candidate.getType())
+                           .append(" ").append(candidate.getHost())
+                           .append(":").append(candidate.getPort()).append("\n");
+                    }
+                }
             }
 
-            JOptionPane.showMessageDialog(this, 
-                    "Proxy resolution for: " + testUrl + "\n\nResult: " + msg,
-                    "Proxy Test", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(this, msg.toString(),
+                    "Proxy Test - win-proxy-java", JOptionPane.INFORMATION_MESSAGE);
 
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, 
-                    "Error testing proxy: " + e.getMessage(),
+                    "Error testing proxy:\n" + e.getMessage(),
                     "Proxy Test Error", JOptionPane.ERROR_MESSAGE);
         }
     }

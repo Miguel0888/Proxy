@@ -24,12 +24,12 @@ public class ProxyConfig {
 
     private boolean showHelpOnStart = true;
 
-    // WPAD/PAC Proxy Support (Client Mode)
+    // WPAD/PAC Proxy Support (Client Mode) - now using win-proxy-java library (no scripts needed)
     private boolean clientOutboundProxyEnabled = false;
     private int clientOutboundProxyCacheTtlSeconds = 300; // 5 minutes
     private int clientOutboundProxyConnectTimeoutMillis = 10000; // 10 seconds
     private int clientOutboundProxyHandshakeTimeoutMillis = 10000; // 10 seconds
-    private String clientOutboundProxyScriptPath = ""; // Custom script path (empty = use default)
+    // Note: clientOutboundProxyScriptPath removed - win-proxy-java library doesn't need external scripts
 
     // Gateway Authentication Options
     private String gatewayAuthMode = "PASSKEY"; // NONE, PASSKEY, TOKEN
@@ -237,12 +237,22 @@ public class ProxyConfig {
         }
     }
 
+    /**
+     * @deprecated Script path is no longer used - win-proxy-java library doesn't need external scripts.
+     * This method is kept for backwards compatibility when loading old configurations.
+     */
+    @Deprecated
     public String getClientOutboundProxyScriptPath() {
-        return clientOutboundProxyScriptPath != null ? clientOutboundProxyScriptPath : "";
+        return "";
     }
 
+    /**
+     * @deprecated Script path is no longer used - win-proxy-java library doesn't need external scripts.
+     * This method is kept for backwards compatibility when loading old configurations.
+     */
+    @Deprecated
     public void setClientOutboundProxyScriptPath(String path) {
-        this.clientOutboundProxyScriptPath = path != null ? path.trim() : "";
+        // Ignored - no longer used
     }
 
     // --- Gateway Authentication ---

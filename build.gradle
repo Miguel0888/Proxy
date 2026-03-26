@@ -25,9 +25,9 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     implementation 'com.google.code.gson:gson:2.10.1'
-
-    // füge hier alle anderen Dependencies aus deinem eigentlichen Projekt wieder ein
-    // (Swing ist im JDK, PS-Skripte liegen als Ressourcen)
+    
+    // Windows Proxy Resolver Library (WPAD/PAC support ohne PowerShell)
+    implementation 'com.aresstack:win-proxy-java:0.1.0-beta.1'
 }
 
 test {

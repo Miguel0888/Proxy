@@ -16,7 +16,11 @@ import java.util.concurrent.TimeUnit;
 /**
  * Windows-specific proxy resolver using PowerShell and .NET WebRequest.
  * Supports WPAD/PAC auto-configuration.
+ * 
+ * @deprecated Use {@link WinProxyJavaResolver} instead, which uses the win-proxy-java library
+ *             and doesn't require external PowerShell scripts.
  */
+@Deprecated
 public final class WindowsProxyResolver implements SystemProxyResolver {
 
     private static final String SCRIPT_RESOURCE = "/ps/get-proxy-for-url.ps1";

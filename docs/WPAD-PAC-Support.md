@@ -12,21 +12,27 @@ Der ReverseProxy unterstützt jetzt **optional** die Verwendung von Windows-Syst
    - Abstrahiert die Proxy-Auflösung für eine Ziel-URL
    - Rückgabe: `ProxyInfo` mit einer Liste von Proxy-Kandidaten
 
-2. **WindowsProxyResolver** (Implementierung)
-   - Nutzt PowerShell und .NET `WebRequest.GetSystemWebProxy()` zur WPAD/PAC-Auflösung
+2. **WinProxyJavaResolver** (Neue Implementierung)
+   - Nutzt die `win-proxy-java` Bibliothek (`com.aresstack:win-proxy-java:0.1.0-beta.1`)
+   - Reine Java-Implementierung - **keine PowerShell-Scripts mehr nötig**
+   - Unterstützt WPAD/PAC Auto-Konfiguration
    - Cached Ergebnisse für 5 Minuten (konfigurierbar)
    - Thread-safe
 
-3. **OutboundSocketDialer** (Interface)
+3. **WindowsProxyResolver** (Legacy - @Deprecated)
+   - Alte PowerShell-basierte Implementierung
+   - Wird nicht mehr verwendet, bleibt für Rückwärtskompatibilität
+
+4. **OutboundSocketDialer** (Interface)
    - Abstrahiert das Öffnen von Outbound-Socket-Verbindungen
    - Implementierungen: `DirectSocketDialer`, `ProxySocketDialer`
 
-4. **ProxySocketDialer** (Implementierung)
+5. **ProxySocketDialer** (Implementierung)
    - Öffnet Verbindungen via HTTP CONNECT-Tunnel
    - Unterstützt Fallback-Kette (z.B. PROXY1 → PROXY2 → DIRECT)
    - Behandelt fehlerhafte Proxies transparent
 
-5. **ProxyInfo / ProxyCandidate**
+6. **ProxyInfo / ProxyCandidate**
    - Datenmodell für Proxy-Entscheidungen
    - Unterstützt: DIRECT, HTTP PROXY, SOCKS (Parsing, aber noch nicht implementiert)
 
@@ -34,9 +40,40 @@ Der ReverseProxy unterstützt jetzt **optional** die Verwendung von Windows-Syst
 
 - **GatewayClient**: Verwendet `OutboundSocketDialer` statt direktem `new Socket()`
 - **ProxyController**: Erstellt den passenden Dialer basierend auf der Konfiguration
-- **ProxyConfig**: Neue Felder für WPAD/PAC-Einstellungen
-- **ProxyConfigService**: Lädt/Speichert die neuen Einstellungen persistent
+- **ProxyConfig**: Felder für WPAD/PAC-Einstellungen
+- **ProxyConfigService**: Lädt/Speichert die Einstellungen persistent
 - **ProxyPreferencesDialog**: UI-Checkbox "Client: Use Windows system proxy (WPAD/PAC)"
+
+## Änderungen mit win-proxy-java
+
+### Migration von PowerShell zu Java
+
+Die bisherige PowerShell-basierte Proxy-Ermittlung wurde durch eine reine Java-Implementierung ersetzt:
+
+**Vorher (PowerShell):**
+- Abhängigkeit von externem PowerShell-Script
+- Script-Extraktion und -Ausführung zur Laufzeit
+- Potenziell anfällig für PowerShell-Richtlinien
+- Zusätzliche Prozess-Erstellung
+
+**Jetzt (win-proxy-java):**
+- Reine Java-Bibliothek
+- Keine externen Scripts oder Prozesse
+- Direkter Zugriff auf Windows-Proxy-Einstellungen
+- Robuster und wartungsfreundlicher
+
+### Neue Dependency
+
+```gradle
+dependencies {
+    implementation 'com.aresstack:win-proxy-java:0.1.0-beta.1'
+}
+```
+
+### Entfernte Konfiguration
+
+Das Feld `proxy.client.outboundProxy.scriptPath` ist nicht mehr erforderlich und wird ignoriert.
+Die Anwendung benötigt keine manuelle Script-Pflege mehr.
 
 ## Konfiguration
 
@@ -47,7 +84,7 @@ Der ReverseProxy unterstützt jetzt **optional** die Verwendung von Windows-Syst
 - **Default:** Deaktiviert (FALSE)
 - **Bedeutung:** 
   - `FALSE` → Client baut Outbound-Verbindungen direkt auf (wie bisher)
-  - `TRUE` → Client ermittelt Proxy via WPAD/PAC und baut CONNECT-Tunnel auf
+  - `TRUE` → Client ermittelt Proxy via win-proxy-java Bibliothek und baut CONNECT-Tunnel auf
 
 ### Properties-Datei
 
@@ -70,17 +107,24 @@ proxy.client.outboundProxy.handshakeTimeoutMillis=10000
 
 ## Funktionsweise
 
-### Proxy-Auflösung
+### Proxy-Auflösung mit win-proxy-java
 
 1. **Client erhält vom Server:** `CONNECT targetHost:targetPort`
 2. **Proxy-Resolver aufrufen:**
    - Synthetische URL bilden: `https://targetHost/` (wenn Port 443) oder `http://targetHost/`
-   - PowerShell-Script `get-proxy-for-url.ps1` ausführen
+   - `WindowsProxyResolver.resolve(url)` aus win-proxy-java aufrufen
    - Cache prüfen (TTL 5 Min.)
-3. **Ergebnis parsen:**
-   - `DIRECT` → keine Proxy-Verwendung
-   - `PROXY host:port` → HTTP-Proxy
-   - `PROXY a:8080; PROXY b:8080; DIRECT` → Fallback-Kette
+3. **Ergebnis verarbeiten:**
+   - `ProxyResult.isDirect()` → keine Proxy-Verwendung
+   - Sonst: HTTP-Proxy mit Host und Port
+
+### win-proxy-java Funktionen
+
+Die Bibliothek unterstützt:
+- **Statische Proxy-Einstellungen** aus Windows Registry
+- **PAC-Auswertung** via GraalJS
+- **WPAD Auto-Detection** (wenn aktiviert)
+- **Bypass-Listen** für lokale Adressen
 
 ### CONNECT-Tunnel
 
@@ -96,12 +140,12 @@ Wenn Proxy ermittelt wurde:
    ```
 3. **Response lesen:**
    - Status `200` → Tunnel steht, Raw-Daten durchreichen
-   - Status `407`, `403`, `502`, etc. → Fehler, nächsten Proxy versuchen
-4. **Fallback:** Wenn alle Proxies fehlschlagen und PAC `DIRECT` enthält → direkte Verbindung
+   - Status `407`, `403`, `502`, etc. → Fehler, nächsten Proxy versuchen (falls vorhanden)
+4. **Fallback:** DIRECT wird als Fallback hinzugefügt
 
 ### Fehlerbehandlung
 
-- **Proxy-Auflösung fehlgeschlagen:** Exception → Verbindung schlägt fehl
+- **Proxy-Auflösung fehlgeschlagen:** Fallback auf DIRECT (mit Logging)
 - **Proxy TCP-Connect fehlgeschlagen:** IOException → nächster Proxy
 - **CONNECT abgelehnt (z.B. 407):** IOException → nächster Proxy
 - **Alle Proxies fehlgeschlagen:** IOException mit Details im Log
@@ -113,140 +157,80 @@ Wenn Proxy ermittelt wurde:
 Im Traffic-Pane werden folgende Nachrichten angezeigt:
 
 ```
-[proxy-resolver] Resolved proxy for https://api.openai.com/: ProxyInfo[PROXY proxy.example.com:8080; DIRECT]
-[proxy-dialer] Dialing api.openai.com:443 via proxy chain: ProxyInfo[PROXY proxy.example.com:8080; DIRECT]
-[proxy-dialer] Attempting HTTP CONNECT via proxy.example.com:8080 to api.openai.com:443
+[proxy-resolver] win-proxy-java returned proxy proxy.example.com:8080 for https://api.openai.com/ (static)
+[proxy-resolver] Resolved proxy for https://api.openai.com/: ProxyInfo[HTTP proxy.example.com:8080; DIRECT]
+[proxy-dialer] Dialing api.openai.com:443 via proxy chain: ProxyInfo[HTTP proxy.example.com:8080; DIRECT]
 [proxy-dialer] HTTP CONNECT tunnel established via proxy.example.com:8080 to api.openai.com:443
 ```
 
 Bei Fehlern:
 
 ```
-[proxy-dialer] Proxy candidate PROXY proxy1:8080 failed: Connection refused
+[proxy-resolver] win-proxy-java error for https://api.openai.com/: ... -> falling back to DIRECT
+[proxy-dialer] Proxy candidate HTTP proxy1:8080 failed: Connection refused
 [proxy-dialer] Attempting DIRECT connection to api.openai.com:443
 ```
-
-### Log-Level
-
-- **info:** Erfolgreiche Verbindungen, Proxy-Entscheidungen
-- **warn:** Fallback auf DIRECT (wenn nicht Windows), nicht unterstützte Proxy-Typen
-- **error:** Alle Proxies fehlgeschlagen, Script-Fehler
-
-## PowerShell-Script
-
-**Datei:** `src/main/resources/ps/get-proxy-for-url.ps1`
-
-**Funktion:**
-- Nimmt URL als Parameter: `.\get-proxy-for-url.ps1 "https://api.openai.com/"`
-- Nutzt .NET `[System.Net.WebRequest]::GetSystemWebProxy()` zur Auflösung
-- Berücksichtigt WPAD, PAC, manuelle Proxy-Einstellungen und Bypass-Liste
-
-**Rückgabe:**
-- `DIRECT` → keine Proxy-Verwendung
-- `PROXY host:port` → HTTP-Proxy verwenden
-- Exit Code 0 bei Erfolg, 1 bei Fehler
-
-**Extraktion:**
-- Script wird beim ersten Aufruf nach `~/.proxy/get-proxy-for-url.ps1` extrahiert
-- Einmal extrahiert, wird es wiederverwendet (kein erneutes Schreiben)
 
 ## Limitierungen
 
 ### Aktuell NICHT unterstützt
 
-1. **SOCKS-Proxies:** PAC kann `SOCKS host:port` liefern → wird geparst, aber Verbindung schlägt fehl mit "SOCKS proxy not supported"
+1. **SOCKS-Proxies:** win-proxy-java unterstützt HTTP-Proxies, SOCKS wird nicht tunneled
 2. **Proxy-Authentifizierung:** Keine Unterstützung für Basic/NTLM/Kerberos-Auth
 3. **HTTPS-Proxies:** Nur HTTP CONNECT wird unterstützt
-4. **Nicht-Windows-Systeme:** WPAD-Resolver ist Windows-spezifisch (nutzt PowerShell + .NET)
+4. **Nicht-Windows-Systeme:** win-proxy-java ist Windows-spezifisch
 
-### Erweiterungen (Optional, falls benötigt)
+### Beta-Version Hinweis
 
-1. **Proxy-Auth:**
-   - Basic: Username/Passwort in Config, `Proxy-Authorization`-Header senden
-   - NTLM/Kerberos: Komplexer, benötigt native APIs oder Libraries wie JNA
-
-2. **SOCKS-Support:**
-   - Java-Library wie `sockslib` oder manuelle SOCKS4/5-Handshake-Implementierung
-
-3. **Linux/macOS WPAD:**
-   - Plattformspezifische Resolver via `gsettings` (Linux) oder `scutil` (macOS)
+Die verwendete win-proxy-java Bibliothek ist als Beta gekennzeichnet (`0.1.0-beta.1`).
+Bei Problemen kann das Fallback-Verhalten auf DIRECT eine Verbindung trotzdem ermöglichen.
 
 ## Testszenarien
 
-### 1. DIRECT (kein Proxy)
+### Unit-Tests
 
-**Config:** `enabled=false` oder PAC liefert `DIRECT`
+Die Klasse `WinProxyJavaResolverTest` enthält Tests für:
+- Resolver-Erstellung
+- Proxy-Auflösung für HTTPS-URLs
+- Proxy-Auflösung für HTTP-URLs
+- Cache-Funktionalität
+- Localhost-Behandlung
 
-**Erwartung:** Verbindung wird direkt aufgebaut (wie bisher)
-
-```
-[proxy-dialer] Attempting DIRECT connection to api.openai.com:443
-```
-
-### 2. Single HTTP Proxy
-
-**PAC-Antwort:** `PROXY proxy.example.com:8080`
-
-**Erwartung:**
-1. CONNECT-Tunnel zu `proxy.example.com:8080`
-2. Bei `200 OK` → Raw-Daten über Tunnel
-3. Bei Fehler → Verbindung schlägt fehl (kein Fallback, da PAC nur einen Proxy liefert)
-
-### 3. Proxy-Fallback-Kette
-
-**PAC-Antwort:** `PROXY proxy1:8080; PROXY proxy2:8080; DIRECT`
-
-**Erwartung:**
-1. Versuch: `proxy1:8080` → Connect-Fehler
-2. Versuch: `proxy2:8080` → `200 OK` → Tunnel steht
-3. Falls beide fehlschlagen: `DIRECT` wird versucht
-
-```
-[proxy-dialer] Proxy candidate PROXY proxy1:8080 failed: Connection timed out
-[proxy-dialer] Attempting HTTP CONNECT via proxy2:8080
-[proxy-dialer] HTTP CONNECT tunnel established via proxy2:8080 to api.openai.com:443
+Ausführen mit:
+```bash
+.\gradlew.bat test --tests "de.bund.zrb.WinProxyJavaResolverTest"
 ```
 
-### 4. Proxy lehnt CONNECT ab (407 Auth Required)
+### Manuelle Tests
 
-**Erwartung:**
-- Status `407` wird als Fehler behandelt
-- Nächster Proxy oder DIRECT wird versucht (falls vorhanden)
-- Sonst: Verbindung schlägt fehl mit "All proxy candidates failed"
+Im Preferences Dialog:
+1. Checkbox "Use Windows system proxy" aktivieren
+2. Test-URL eingeben (z.B. `https://www.google.com/`)
+3. "Test"-Button klicken
+4. Dialog zeigt Proxy-Ergebnis oder DIRECT
 
-```
-[proxy-dialer] Proxy proxy.example.com:8080 rejected CONNECT with status 407 (HTTP/1.1 407 Proxy Authentication Required)
-[proxy-dialer] All proxy candidates failed for api.openai.com:443 (tried 1 candidate(s))
-```
+## Performance
 
-### 5. Cache-Test
+### Overhead
 
-**Erwartung:**
-- Erste Verbindung zu `api.openai.com:443` → PowerShell-Aufruf
-- Zweite Verbindung (innerhalb 5 Min.) → Cache-Hit, kein Script-Aufruf
+- **Ohne Proxy (`enabled=false`):** Kein Overhead (wie bisher)
+- **Mit Proxy (`enabled=true`):**
+  - Erste Verbindung pro Host: ~10-100ms (Java API-Aufruf)
+  - Weitere Verbindungen (Cache-Hit): <1ms
+  - CONNECT-Handshake: ~50-200ms (abhängig von Proxy-Latenz)
 
-```
-[proxy-resolver] Resolved proxy for https://api.openai.com/: ProxyInfo[PROXY proxy:8080]
-... (einige Sekunden später) ...
-[proxy-resolver] Proxy cache hit for https://api.openai.com/: ProxyInfo[PROXY proxy:8080]
-```
+### Verbesserung gegenüber PowerShell
 
-## Sicherheit
+Die win-proxy-java Bibliothek ist deutlich schneller als die PowerShell-basierte Lösung:
+- Keine Prozess-Erstellung
+- Keine Script-Ausführung
+- Direkter Windows-API-Zugriff
 
-### Credentials
+### Cache-Strategie
 
-**Aktuell:**
-- Keine Proxy-Credentials werden unterstützt
-- Keine Credentials werden geloggt
-
-**Falls später erweitert:**
-- Speicherung nur verschlüsselt (z.B. Windows DPAPI)
-- Niemals in Klartext-Logs
-
-### CA-Trust
-
-- WPAD/PAC-Auflösung nutzt Systemvertrauen (Windows Root Store)
-- Keine zusätzlichen Zertifikatsprüfungen nötig
+- **Key:** `(scheme, host, port)` → z.B. `https://api.openai.com:443`
+- **TTL:** 5 Minuten (konfigurierbar)
+- **Thread-Safety:** `ConcurrentHashMap` (lock-free reads)
 
 ## Migration / Kompatibilität
 
@@ -254,11 +238,13 @@ Bei Fehlern:
 
 - **Default:** `enabled=false` → keine Änderung am bestehenden Verhalten
 - Upgrade transparent: alte Configs funktionieren weiter
+- Script-Pfad-Konfiguration wird ignoriert (kann bleiben oder entfernt werden)
 
 ### Abwärtskompatibilität
 
 - Neue Properties haben Defaults → kein Breakage
 - UI-Checkbox ist optional → muss nicht aktiviert werden
+- Keine Änderung am Netzwerkverhalten wenn deaktiviert
 
 ## Troubleshooting
 
@@ -271,30 +257,19 @@ Bei Fehlern:
 
 **Lösung:**
 - Log prüfen: Welcher Status-Code kam zurück?
-- PAC-Konfiguration prüfen: Liefert sie `DIRECT` als Fallback?
 - Proxy-Admin kontaktieren: Ist CONNECT für Zielhost erlaubt?
 
-### Problem: "Proxy resolution script failed"
+### Problem: "win-proxy-java error"
 
 **Ursache:**
-- PowerShell nicht installiert
-- Script-Datei fehlt oder ist beschädigt
-- WPAD/PAC nicht erreichbar
+- Windows-Proxy-Einstellungen nicht lesbar
+- PAC-Script Fehler
+- WPAD nicht erreichbar
 
 **Lösung:**
-- PowerShell-Version prüfen: `Get-Host | Select-Object Version`
-- Script manuell testen: `powershell.exe -ExecutionPolicy Bypass -File ~/.proxy/get-proxy-for-url.ps1 "https://example.com/"`
-- WPAD/PAC-URL im Browser prüfen: `about:config` (Firefox) oder `chrome://net-internals/#proxy` (Chrome)
-
-### Problem: "SOCKS proxy not supported"
-
-**Ursache:**
-- PAC liefert `SOCKS host:port`
-- SOCKS-Implementierung fehlt aktuell
-
-**Lösung:**
-- PAC anpassen: SOCKS durch HTTP-Proxy ersetzen (falls möglich)
-- Oder: Feature-Request für SOCKS-Support
+- Windows Proxy-Einstellungen prüfen (Systemsteuerung → Internet-Optionen)
+- Mit "Test"-Button im Preferences Dialog prüfen
+- Fallback auf DIRECT erfolgt automatisch
 
 ### Problem: Cache veraltet
 
@@ -302,44 +277,25 @@ Bei Fehlern:
 - Proxy-Konfiguration geändert, aber Client nutzt alten Proxy
 
 **Lösung:**
-- Proxy neu starten (stoppt/startet Client-Thread → Cache wird geleert)
-- Oder: Cache-TTL in Config reduzieren (z.B. `cacheTtlSeconds=60`)
-
-## Performance
-
-### Overhead
-
-- **Ohne Proxy (`enabled=false`):** Kein Overhead (wie bisher)
-- **Mit Proxy (`enabled=true`):**
-  - Erste Verbindung pro Host: ~100-500ms (PowerShell-Aufruf)
-  - Weitere Verbindungen (Cache-Hit): <1ms
-  - CONNECT-Handshake: ~50-200ms (abhängig von Proxy-Latenz)
-
-### Cache-Strategie
-
-- **Key:** `(scheme, host, port)` → z.B. `https://api.openai.com:443`
-- **TTL:** 5 Minuten (konfigurierbar)
-- **Thread-Safety:** `ConcurrentHashMap` (lock-free reads)
-
-### Optimierung
-
-- Cache-TTL erhöhen (z.B. 15 Min.) für stabilere Netzwerke
-- Cache-TTL reduzieren (z.B. 1 Min.) für dynamische PAC-Konfigurationen
+- Proxy neu starten (Cache wird geleert)
+- Oder: Cache-TTL in Config reduzieren
 
 ## Zusammenfassung
 
 | Feature | Status | Bemerkung |
 |---------|--------|-----------|
-| WPAD/PAC-Auflösung (Windows) | ✅ Implementiert | PowerShell + .NET |
+| WPAD/PAC-Auflösung (Windows) | ✅ Implementiert | win-proxy-java Bibliothek |
 | HTTP CONNECT-Tunnel | ✅ Implementiert | RFC 2817 |
-| Proxy-Fallback-Kette | ✅ Implementiert | Mehrere Proxies + DIRECT |
+| Proxy-Fallback | ✅ Implementiert | Proxy + DIRECT |
 | Cache (5 Min. TTL) | ✅ Implementiert | Thread-safe |
 | UI-Checkbox (Preferences) | ✅ Implementiert | Ein/Aus-Schalter |
+| Test-Button | ✅ Implementiert | Proxy-Test im Dialog |
 | Config-Persistenz | ✅ Implementiert | `proxy.properties` |
 | Logging | ✅ Implementiert | Info/Warn-Level |
-| SOCKS-Proxies | ❌ Nicht unterstützt | Parsing OK, Verbindung fehlt |
+| Keine Scripts nötig | ✅ Implementiert | Reine Java-Lösung |
+| SOCKS-Proxies | ❌ Nicht unterstützt | Nur HTTP-Proxies |
 | Proxy-Auth | ❌ Nicht unterstützt | Basic/NTLM/Kerberos |
-| Linux/macOS WPAD | ❌ Nicht unterstützt | Nur Windows |
+| Linux/macOS | ❌ Nicht unterstützt | Nur Windows |
 
-**Status:** Feature vollständig implementiert gemäß Anforderungen F1-F8, N1-N5, T1 (Unit-Tests empfohlen, aber optional).
+**Status:** Feature vollständig implementiert mit win-proxy-java Bibliothek. PowerShell-Abhängigkeit entfernt.
 

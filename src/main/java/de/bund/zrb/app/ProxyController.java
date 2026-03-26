@@ -296,9 +296,9 @@ class ProxyController {
             return new DirectSocketDialer(connectTimeout, readTimeout);
         }
 
-        // WPAD/PAC-based proxy resolution
+        // Windows system proxy resolution via win-proxy-java library
         if (trafficListener != null) {
-            trafficListener.onTraffic("info", "Client outbound: using Windows system proxy (WPAD/PAC)", false);
+            trafficListener.onTraffic("info", "Client outbound: using Windows system proxy (win-proxy-java)", false);
         }
 
         // Check if Windows
@@ -310,28 +310,15 @@ class ProxyController {
             return new DirectSocketDialer(config.getClientOutboundProxyConnectTimeoutMillis(), 30000);
         }
 
-        // Create Windows resolver with error handling
+        // Create resolver using win-proxy-java library (no external scripts needed)
         try {
-            File workingDir = configService.getConfigDir();
-            if (!workingDir.exists()) {
-                workingDir.mkdirs();
-            }
-            
-            String customScriptPath = config.getClientOutboundProxyScriptPath();
-            WindowsProxyResolver resolver = new WindowsProxyResolver(
-                    workingDir,
+            WinProxyJavaResolver resolver = new WinProxyJavaResolver(
                     config.getClientOutboundProxyCacheTtlSeconds(),
-                    trafficListener,
-                    customScriptPath.isEmpty() ? null : customScriptPath
+                    trafficListener
             );
 
-            // Create proxy-aware dialer
             if (trafficListener != null) {
-                if (customScriptPath.isEmpty()) {
-                    trafficListener.onTraffic("info", "WPAD/PAC proxy resolver initialized with default script", false);
-                } else {
-                    trafficListener.onTraffic("info", "WPAD/PAC proxy resolver initialized with custom script: " + customScriptPath, false);
-                }
+                trafficListener.onTraffic("info", "Windows proxy resolver initialized (win-proxy-java library)", false);
             }
             
             return new ProxySocketDialer(
@@ -344,9 +331,9 @@ class ProxyController {
         } catch (Exception e) {
             // Fallback to direct connection on any error
             if (trafficListener != null) {
-                trafficListener.onTraffic("error", "Failed to initialize WPAD/PAC resolver: " + e.getMessage() + ". Falling back to DIRECT.", false);
+                trafficListener.onTraffic("error", "Failed to initialize win-proxy-java resolver: " + e.getMessage() + ". Falling back to DIRECT.", false);
             }
-            System.err.println("[ProxyController] Failed to initialize WPAD/PAC resolver: " + e.getMessage());
+            System.err.println("[ProxyController] Failed to initialize win-proxy-java resolver: " + e.getMessage());
             e.printStackTrace();
             return new DirectSocketDialer(config.getClientOutboundProxyConnectTimeoutMillis(), 30000);
         }
